@@ -1,0 +1,30 @@
+type Query {
+    healthcheck: HealthStatus!
+    messages: [Message!]!
+}
+
+type Mutation {
+    addMessage(content: String!, sender: String!): Message!
+}
+
+type Subscription {
+    messageAdded: Message!
+}
+
+type Message {
+    id: ID!
+    content: String!
+    sender: String!
+    timestamp: String!
+}
+
+type HealthStatus {
+    status: String!
+    details: [ServiceStatus!]!
+}
+
+type ServiceStatus {
+    service: String!
+    status: String!
+    lastCheck: String!
+}

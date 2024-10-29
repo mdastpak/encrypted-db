@@ -1,0 +1,16 @@
+server:
+  ip: "127.0.0.1"          # IP address of the web server
+  port: "8080"             # Port for the web server
+
+postgres:
+  host: "localhost"        # Host address for PostgreSQL
+  port: "5432"             # Port for PostgreSQL
+  user: "postgres"         # Username for PostgreSQL
+  password: "postgres"     # Password for PostgreSQL
+  dbname: "postgres"       # Database name for PostgreSQL
+
+redis:
+  host: "localhost"        # Host address for Redis
+  port: "6379"             # Port for Redis
+  password: ""             # Password for Redis (if applicable)
+  db: 0                    # Database number for Redis
