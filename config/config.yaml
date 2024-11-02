@@ -6,7 +6,7 @@ postgres:
   host: "localhost"        # Host address for PostgreSQL
   port: "5432"             # Port for PostgreSQL
   user: "postgres"         # Username for PostgreSQL
-  password: "postgres"     # Password for PostgreSQL
+  password: "afnm640"     # Password for PostgreSQL
   dbname: "postgres"       # Database name for PostgreSQL
 
 redis:
