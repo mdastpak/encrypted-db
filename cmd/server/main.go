@@ -2,12 +2,6 @@ package main
 
 import (
 	"context"
-	"encrypted-db/config"
-	"encrypted-db/internal/db"
-	"encrypted-db/internal/handlers/admin"
-	"encrypted-db/internal/handlers/public"
-	"encrypted-db/internal/handlers/system"
-	"encrypted-db/internal/handlers/user"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,84 +10,100 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"encrypted-db/config"
+	"encrypted-db/docs"
+	"encrypted-db/internal/db"
+	"encrypted-db/internal/handlers/admin"
+	"encrypted-db/internal/handlers/public"
+	"encrypted-db/internal/handlers/system"
+
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+// @title Encrypted-DB API Documentation
+// @version 1.0
+// @description This is a sample server for the encrypted-db project.
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.swagger.io/support
+// @contact.email support@swagger.io
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:8080
+// @BasePath /
 func main() {
-	// Load configuration
 	config.LoadConfig()
 
-	// Initialize database connections
 	postgresService := db.NewPostgresService()
 	redisService := db.NewRedisService()
 
-	// Create handlers with injected dependencies
 	systemHandler := system.NewHandler(postgresService, redisService)
-	publicHandler := public.NewHandler()
-	userHandler := user.NewHandler()
-	adminHandler := admin.NewHandler()
+	publicHandler := public.NewHandler(postgresService, redisService)
+	adminHandler := admin.NewHandler(postgresService, redisService)
 
-	// Define server address using config values
 	serverAddr := fmt.Sprintf("%s:%s", config.Config.Server.IP, config.Config.Server.Port)
+	swaggerURL := fmt.Sprintf("http://%s/swagger/index.html", serverAddr)
 
-	// Set up chi router with middlewares
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	// Set up gin and Swagger documentation
+	r := gin.Default()
+	docs.SwaggerInfo.BasePath = "/"
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler)) // Swagger endpoint
 
-	// Empty root handler for "/"
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(""))
+	// Root endpoint
+	r.GET("/", func(c *gin.Context) {
+		c.String(200, "Welcome to the Encrypted-DB API")
 	})
 
-	// System endpoints
-	r.Get("/healthcheck", systemHandler.HealthCheckHandler)
-
-	// Public endpoints
-	r.Route("/public", func(r chi.Router) {
-		r.Get("/endpoint1", publicHandler.Endpoint1)
+	// Health check endpoint
+	r.GET("/healthcheck", func(c *gin.Context) {
+		systemHandler.HealthCheckHandler(c.Writer, c.Request)
 	})
 
-	// User endpoints with multiple methods
-	r.Route("/user", func(r chi.Router) {
-		r.Get("/profile", userHandler.GetProfile)
-		r.Put("/profile", userHandler.UpdateProfile)
-	})
+	// Public routes
+	public := r.Group("/public")
+	{
+		public.GET("/currencies", publicHandler.GetActiveCurrencies)
+	}
 
-	// Admin endpoints
-	r.Route("/admin", func(r chi.Router) {
-		r.Get("/dashboard", adminHandler.DashboardHandler)
-	})
+	// Admin routes
+	admin := r.Group("/admin")
+	{
+		admin.POST("/currencies", adminHandler.CreateCurrency)
+		admin.PUT("/currencies/:id", adminHandler.UpdateCurrency)
+		admin.DELETE("/currencies/:id", adminHandler.DeleteCurrency)
+	}
 
+	// Log clickable links for server and Swagger
+	log.Printf("🚀 Starting server on: \033[1;34mhttp://%s\033[0m\n", serverAddr)
+	log.Printf("📄 Swagger documentation available at: \033[1;34m%s\033[0m\n", swaggerURL)
+
+	// Start the server
 	srv := &http.Server{
 		Addr:    serverAddr,
 		Handler: r,
 	}
-
-	// Start server in a goroutine to allow graceful shutdown
 	go func() {
-		log.Printf("Starting server on %s\n", serverAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Could not start server: %v\n", err)
 		}
 	}()
 
-	// Set up channel to listen for OS interrupt or terminate signals
+	// Graceful shutdown setup
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	<-quit // Block until signal is received
+	<-quit
 
 	log.Println("Shutting down server...")
 
-	// Create a context with timeout for graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
-
 	log.Println("Server stopped gracefully")
 }

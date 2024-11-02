@@ -1,0 +1,153 @@
+basePath: /
+definitions:
+  models.Currency:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      hk:
+        type: string
+      id:
+        type: integer
+      info:
+        properties:
+          en_name:
+            type: string
+          fa_name:
+            type: string
+          if_fiat:
+            type: boolean
+          symbol:
+            type: string
+        type: object
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: This is a sample server for the encrypted-db project.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Encrypted-DB API Documentation
+  version: "1.0"
+paths:
+  /admin/currencies:
+    post:
+      consumes:
+      - application/json
+      description: Create a new currency in the system
+      parameters:
+      - description: Currency to create
+        in: body
+        name: currency
+        required: true
+        schema:
+          $ref: '#/definitions/models.Currency'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Currency'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Create a new currency
+      tags:
+      - Admin
+  /admin/currencies/{id}:
+    delete:
+      description: Logically delete a currency by setting deleted_at
+      parameters:
+      - description: Currency ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Currency deleted
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Delete a currency (logical delete)
+      tags:
+      - Admin
+    put:
+      consumes:
+      - application/json
+      description: Update the information or status of an existing currency
+      parameters:
+      - description: Currency ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Currency data to update
+        in: body
+        name: currency
+        required: true
+        schema:
+          $ref: '#/definitions/models.Currency'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Currency updated
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Update a currency
+      tags:
+      - Admin
+  /public/currencies:
+    get:
+      description: Retrieve all active currencies from the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Currency'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get all active currencies
+      tags:
+      - Public
+swagger: "2.0"
