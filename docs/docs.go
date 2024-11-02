@@ -49,32 +49,36 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "0": {
+                        "description": "URL Scheme Error: Ensure URL scheme is 'http' or 'https'",
                         "schema": {
-                            "$ref": "#/definitions/models.Currency"
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Currency created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid input or duplicate symbol/contract",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Failed to create currency due to an unexpected error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     }
                 }
             }
         },
-        "/admin/currencies/{id}": {
+        "/admin/currencies/{hk}": {
             "put": {
-                "description": "Update the information or status of an existing currency",
+                "description": "Update the information or status of an existing currency using its HK (UUID) as identifier",
                 "consumes": [
                     "application/json"
                 ],
@@ -88,8 +92,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Currency ID",
-                        "name": "id",
+                        "description": "Currency HK",
+                        "name": "hk",
                         "in": "path",
                         "required": true
                     },
@@ -105,54 +109,63 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Currency updated",
+                        "description": "Currency updated successfully",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid input or duplicate symbol/contract",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Currency not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Failed to update currency due to an unexpected error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     }
                 }
             },
             "delete": {
-                "description": "Logically delete a currency by setting deleted_at",
+                "description": "Logically delete a currency by setting deleted_at and changing its status to 'deleted'.",
                 "tags": [
                     "Admin"
                 ],
-                "summary": "Delete a currency (logical delete)",
+                "summary": "Delete a currency",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Currency ID",
-                        "name": "id",
+                        "description": "Currency HK",
+                        "name": "hk",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Currency deleted",
+                        "description": "Currency deleted successfully",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Currency not found or already deleted",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Failed to delete currency due to an unexpected error",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     }
                 }
@@ -160,7 +173,7 @@ const docTemplate = `{
         },
         "/public/currencies": {
             "get": {
-                "description": "Retrieve all active currencies from the system",
+                "description": "Retrieve all active currencies from Redis cache",
                 "produces": [
                     "application/json"
                 ],
@@ -170,7 +183,7 @@ const docTemplate = `{
                 "summary": "Get all active currencies",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "List of active currencies",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -179,10 +192,50 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Failed to retrieve currencies from cache",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/currencies/{hk}": {
+            "get": {
+                "description": "Retrieve a single currency from Redis cache using its HK",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Public"
+                ],
+                "summary": "Get a single currency by HK",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Currency HK",
+                        "name": "hk",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Currency data",
+                        "schema": {
+                            "$ref": "#/definitions/models.Currency"
+                        }
+                    },
+                    "404": {
+                        "description": "Currency not found",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to retrieve currency from cache",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
                         }
                     }
                 }
@@ -190,6 +243,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "models.APIResponse": {
+            "type": "object",
+            "properties": {
+                "info": {
+                    "description": "Info can hold any type of data (e.g., list or object)"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                }
+            }
+        },
         "models.Currency": {
             "type": "object",
             "properties": {
@@ -206,21 +273,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "info": {
-                    "type": "object",
-                    "properties": {
-                        "en_name": {
-                            "type": "string"
-                        },
-                        "fa_name": {
-                            "type": "string"
-                        },
-                        "if_fiat": {
-                            "type": "boolean"
-                        },
-                        "symbol": {
-                            "type": "string"
-                        }
-                    }
+                    "$ref": "#/definitions/models.CurrencyInfo"
                 },
                 "status": {
                     "type": "string"
@@ -229,8 +282,34 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "models.CurrencyInfo": {
+            "type": "object",
+            "properties": {
+                "contract": {
+                    "type": "string"
+                },
+                "en_name": {
+                    "type": "string"
+                },
+                "fa_name": {
+                    "type": "string"
+                },
+                "if_fiat": {
+                    "type": "boolean"
+                },
+                "is_token": {
+                    "type": "boolean"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
         }
-    }
+    },
+    "x-warning.CORS": "Cross-Origin Resource Sharing (CORS) error occurs when trying to access the API from an unauthorized domain. Make sure the origin domain is allowed in CORS settings on the server.",
+    "x-warning.NetworkFailure": "Network Failure error may happen if there is an issue with the network connection while making a request. Check your internet connection and try again.",
+    "x-warning.URLScheme": "The URL scheme error 'URL scheme must be \"http\" or \"https\" for CORS request' occurs when the URL protocol is not http or https. Ensure the URL scheme is correctly set to http or https."
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
@@ -238,7 +317,7 @@ var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "localhost:8080",
 	BasePath:         "/",
-	Schemes:          []string{},
+	Schemes:          []string{"http", "https"},
 	Title:            "Encrypted-DB API Documentation",
 	Description:      "This is a sample server for the encrypted-db project.",
 	InfoInstanceName: "swagger",

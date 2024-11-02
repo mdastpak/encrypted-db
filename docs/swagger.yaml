@@ -1,5 +1,14 @@
 basePath: /
 definitions:
+  models.APIResponse:
+    properties:
+      info:
+        description: Info can hold any type of data (e.g., list or object)
+      message:
+        type: string
+      status:
+        type: integer
+    type: object
   models.Currency:
     properties:
       created_at:
@@ -11,19 +20,25 @@ definitions:
       id:
         type: integer
       info:
-        properties:
-          en_name:
-            type: string
-          fa_name:
-            type: string
-          if_fiat:
-            type: boolean
-          symbol:
-            type: string
-        type: object
+        $ref: '#/definitions/models.CurrencyInfo'
       status:
         type: string
       updated_at:
+        type: string
+    type: object
+  models.CurrencyInfo:
+    properties:
+      contract:
+        type: string
+      en_name:
+        type: string
+      fa_name:
+        type: string
+      if_fiat:
+        type: boolean
+      is_token:
+        type: boolean
+      symbol:
         type: string
     type: object
 host: localhost:8080
@@ -55,53 +70,60 @@ paths:
       produces:
       - application/json
       responses:
+        "0":
+          description: 'URL Scheme Error: Ensure URL scheme is ''http'' or ''https'''
+          schema:
+            $ref: '#/definitions/models.APIResponse'
         "201":
-          description: Created
+          description: Currency created successfully
           schema:
-            $ref: '#/definitions/models.Currency'
+            $ref: '#/definitions/models.APIResponse'
         "400":
-          description: Bad Request
+          description: Invalid input or duplicate symbol/contract
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.APIResponse'
         "500":
-          description: Internal Server Error
+          description: Failed to create currency due to an unexpected error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.APIResponse'
       summary: Create a new currency
       tags:
       - Admin
-  /admin/currencies/{id}:
+  /admin/currencies/{hk}:
     delete:
-      description: Logically delete a currency by setting deleted_at
+      description: Logically delete a currency by setting deleted_at and changing
+        its status to 'deleted'.
       parameters:
-      - description: Currency ID
+      - description: Currency HK
         in: path
-        name: id
+        name: hk
         required: true
         type: string
       responses:
         "200":
-          description: Currency deleted
+          description: Currency deleted successfully
           schema:
-            type: string
+            $ref: '#/definitions/models.APIResponse'
+        "404":
+          description: Currency not found or already deleted
+          schema:
+            $ref: '#/definitions/models.APIResponse'
         "500":
-          description: Internal Server Error
+          description: Failed to delete currency due to an unexpected error
           schema:
-            additionalProperties: true
-            type: object
-      summary: Delete a currency (logical delete)
+            $ref: '#/definitions/models.APIResponse'
+      summary: Delete a currency
       tags:
       - Admin
     put:
       consumes:
       - application/json
-      description: Update the information or status of an existing currency
+      description: Update the information or status of an existing currency using
+        its HK (UUID) as identifier
       parameters:
-      - description: Currency ID
+      - description: Currency HK
         in: path
-        name: id
+        name: hk
         required: true
         type: string
       - description: Currency data to update
@@ -114,40 +136,80 @@ paths:
       - application/json
       responses:
         "200":
-          description: Currency updated
+          description: Currency updated successfully
           schema:
-            type: string
+            $ref: '#/definitions/models.APIResponse'
         "400":
-          description: Bad Request
+          description: Invalid input or duplicate symbol/contract
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.APIResponse'
+        "404":
+          description: Currency not found
+          schema:
+            $ref: '#/definitions/models.APIResponse'
         "500":
-          description: Internal Server Error
+          description: Failed to update currency due to an unexpected error
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.APIResponse'
       summary: Update a currency
       tags:
       - Admin
   /public/currencies:
     get:
-      description: Retrieve all active currencies from the system
+      description: Retrieve all active currencies from Redis cache
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: List of active currencies
           schema:
             items:
               $ref: '#/definitions/models.Currency'
             type: array
         "500":
-          description: Internal Server Error
+          description: Failed to retrieve currencies from cache
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.APIResponse'
       summary: Get all active currencies
       tags:
       - Public
+  /public/currencies/{hk}:
+    get:
+      description: Retrieve a single currency from Redis cache using its HK
+      parameters:
+      - description: Currency HK
+        in: path
+        name: hk
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Currency data
+          schema:
+            $ref: '#/definitions/models.Currency'
+        "404":
+          description: Currency not found
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+        "500":
+          description: Failed to retrieve currency from cache
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Get a single currency by HK
+      tags:
+      - Public
+schemes:
+- http
+- https
 swagger: "2.0"
+x-warning.CORS: Cross-Origin Resource Sharing (CORS) error occurs when trying to access
+  the API from an unauthorized domain. Make sure the origin domain is allowed in CORS
+  settings on the server.
+x-warning.NetworkFailure: Network Failure error may happen if there is an issue with
+  the network connection while making a request. Check your internet connection and
+  try again.
+x-warning.URLScheme: The URL scheme error 'URL scheme must be "http" or "https" for
+  CORS request' occurs when the URL protocol is not http or https. Ensure the URL
+  scheme is correctly set to http or https.

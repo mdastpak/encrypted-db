@@ -36,6 +36,11 @@ import (
 
 // @host localhost:8080
 // @BasePath /
+// @schemes http https
+
+// @x-warning.CORS "Cross-Origin Resource Sharing (CORS) error occurs when trying to access the API from an unauthorized domain. Make sure the origin domain is allowed in CORS settings on the server."
+// @x-warning.NetworkFailure "Network Failure error may happen if there is an issue with the network connection while making a request. Check your internet connection and try again."
+// @x-warning.URLScheme "The URL scheme error 'URL scheme must be \"http\" or \"https\" for CORS request' occurs when the URL protocol is not http or https. Ensure the URL scheme is correctly set to http or https."
 func main() {
 	config.LoadConfig()
 
@@ -45,6 +50,12 @@ func main() {
 	systemHandler := system.NewHandler(postgresService, redisService)
 	publicHandler := public.NewHandler(postgresService, redisService)
 	adminHandler := admin.NewHandler(postgresService, redisService)
+
+	// Load and cache currencies on server start
+	err := adminHandler.LoadAndCacheCurrencies()
+	if err != nil {
+		log.Fatalf("Failed to load and cache currencies: %v", err)
+	}
 
 	serverAddr := fmt.Sprintf("%s:%s", config.Config.Server.IP, config.Config.Server.Port)
 	swaggerURL := fmt.Sprintf("http://%s/swagger/index.html", serverAddr)
@@ -68,14 +79,15 @@ func main() {
 	public := r.Group("/public")
 	{
 		public.GET("/currencies", publicHandler.GetActiveCurrencies)
+		public.GET("/currencies/:hk", publicHandler.GetCurrencyByHK)
 	}
 
 	// Admin routes
 	admin := r.Group("/admin")
 	{
 		admin.POST("/currencies", adminHandler.CreateCurrency)
-		admin.PUT("/currencies/:id", adminHandler.UpdateCurrency)
-		admin.DELETE("/currencies/:id", adminHandler.DeleteCurrency)
+		admin.PUT("/currencies/:hk", adminHandler.UpdateCurrency)
+		admin.DELETE("/currencies/:hk", adminHandler.DeleteCurrency)
 	}
 
 	// Log clickable links for server and Swagger
@@ -99,6 +111,11 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
+
+	// Cleanup base definitions from Redis
+	if err := adminHandler.CleanupBaseDefinitions(); err != nil {
+		log.Printf("Error during cleanup: %v\n", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

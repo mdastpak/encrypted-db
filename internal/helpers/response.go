@@ -1,0 +1,18 @@
+// internal/helpers/response.go
+package helpers
+
+import (
+	"encrypted-db/internal/models"
+
+	"github.com/gin-gonic/gin"
+)
+
+// SendResponse is a helper function to send standardized JSON responses
+func SendResponse(c *gin.Context, status int, message string, info interface{}) {
+	c.Header("Content-Type", "application/json")
+	c.JSON(status, models.APIResponse{
+		Status:  status,
+		Message: message,
+		Info:    info,
+	})
+}
