@@ -9,6 +9,7 @@ import (
 	"encrypted-db/internal/db"
 	"encrypted-db/internal/helpers"
 	"encrypted-db/internal/models"
+	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -17,17 +18,19 @@ import (
 
 // CurrenciesPublicHandler struct to hold dependencies for public routes
 type CurrenciesPublicHandler struct {
-	PostgresDB  *db.PostgresService
-	RedisClient *db.RedisService
-	RedisIndex  string // Redis index for base definitions
+	PostgresDB      *db.PostgresService
+	RedisClient     *db.RedisService
+	RedisIndex      string // Redis index for base definitions
+	RabbitMQService *rabbitmq.RabbitMQService
 }
 
 // NewHandler function to initialize CurrenciesPublicHandler with dependencies
-func NewHandler(postgres *db.PostgresService, redis *db.RedisService) *CurrenciesPublicHandler {
+func NewHandler(postgres *db.PostgresService, redis *db.RedisService, rabbitMQ *rabbitmq.RabbitMQService) *CurrenciesPublicHandler {
 	return &CurrenciesPublicHandler{
-		PostgresDB:  postgres,
-		RedisClient: redis,
-		RedisIndex:  "base_definitions", // Setting index for base definitions
+		PostgresDB:      postgres,
+		RedisClient:     redis,
+		RedisIndex:      "base_definitions", // Setting index for base definitions
+		RabbitMQService: rabbitMQ,
 	}
 }
 

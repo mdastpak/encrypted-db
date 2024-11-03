@@ -47,6 +47,13 @@ func NewPostgresService() *PostgresService {
 	}
 }
 
+// Close closes the PostgreSQL database connection
+func (p *PostgresService) Close() {
+	if err := p.DB.Close(); err != nil {
+		log.Printf("Error closing PostgreSQL connection: %v", err)
+	}
+}
+
 // runMigrations applies migrations from the migrations directory
 func runMigrations(db *sql.DB) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})

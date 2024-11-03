@@ -1,10 +1,10 @@
 package system
 
 import (
-	"encoding/json"
-	"encrypted-db/internal/db"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // HealthStatus represents the overall health status
@@ -19,19 +19,8 @@ type ServiceStatus struct {
 	LastCheck time.Time `json:"last_check"`
 }
 
-// Handler struct for system-related endpoints
-type Handler struct {
-	Postgres *db.PostgresService
-	Redis    *db.RedisService
-}
-
-// NewHandler creates a new system handler with injected dependencies
-func NewHandler(postgres *db.PostgresService, redis *db.RedisService) *Handler {
-	return &Handler{Postgres: postgres, Redis: redis}
-}
-
 // HealthCheckHandler checks the health of each service and returns a JSON response
-func (h *Handler) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+func (h *SystemHandler) HealthCheckHandler(c *gin.Context) {
 	// Initialize health status response
 	healthStatus := HealthStatus{
 		Status:  "ok",
@@ -60,7 +49,6 @@ func (h *Handler) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 		LastCheck: time.Now(),
 	}
 
-	// Set response headers and return JSON response
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(healthStatus)
+	// Return JSON response
+	c.JSON(http.StatusOK, healthStatus)
 }

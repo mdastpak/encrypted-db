@@ -15,7 +15,9 @@ import (
 	"encrypted-db/internal/db"
 	"encrypted-db/internal/handlers/admin"
 	"encrypted-db/internal/handlers/public"
+	"encrypted-db/internal/handlers/socket"
 	"encrypted-db/internal/handlers/system"
+	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -44,12 +46,23 @@ import (
 func main() {
 	config.LoadConfig()
 
+	// Initialize database connections
 	postgresService := db.NewPostgresService()
-	redisService := db.NewRedisService()
+	defer postgresService.Close() // Ensures PostgreSQL connection is closed when main exits
 
-	systemHandler := system.NewHandler(postgresService, redisService)
-	publicHandler := public.NewHandler(postgresService, redisService)
-	adminHandler := admin.NewHandler(postgresService, redisService)
+	redisService := db.NewRedisService()
+	defer redisService.Close() // Ensures Redis connection is closed when main exits
+
+	// Setup RabbitMQ service
+	rabbitMQService := rabbitmq.NewRabbitMQService()
+	defer rabbitMQService.Close() // Ensures RabbitMQ connection is closed when main exits
+
+	// Initialize WebSocket handler with RabbitMQ
+	webSocketHandler := socket.NewWebSocketHandler(rabbitMQService) // Using the new socket package
+
+	systemHandler := system.NewHandler(postgresService, redisService, rabbitMQService)
+	publicHandler := public.NewHandler(postgresService, redisService, rabbitMQService)
+	adminHandler := admin.NewHandler(postgresService, redisService, rabbitMQService)
 
 	// Load and cache currencies on server start
 	err := adminHandler.LoadAndCacheCurrencies()
@@ -70,10 +83,18 @@ func main() {
 		c.String(200, "Welcome to the Encrypted-DB API")
 	})
 
-	// Health check endpoint
-	r.GET("/healthcheck", func(c *gin.Context) {
-		systemHandler.HealthCheckHandler(c.Writer, c.Request)
-	})
+	// WebSocket route for currencies
+	socket := r.Group("/ws")
+	{
+		socket.GET("/", webSocketHandler.ServeWSGin) // WebSocket endpoint for currency updates
+	}
+
+	// System routes
+	system := r.Group("/system")
+	{
+		system.GET("/healthcheck", systemHandler.HealthCheckHandler)
+		system.GET("/ping", systemHandler.PingPongHandler)
+	}
 
 	// Public routes
 	public := r.Group("/public")

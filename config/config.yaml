@@ -1,16 +1,26 @@
 server:
-  ip: "127.0.0.1"          # IP address of the web server
-  port: "8080"             # Port for the web server
+  ip: "127.0.0.1"
+  port: "8080"
 
 postgres:
-  host: "localhost"        # Host address for PostgreSQL
-  port: "5432"             # Port for PostgreSQL
-  user: "postgres"         # Username for PostgreSQL
-  password: "afnm640"     # Password for PostgreSQL
-  dbname: "postgres"       # Database name for PostgreSQL
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "afnm640"
+  dbname: "postgres"
 
 redis:
-  host: "localhost"        # Host address for Redis
-  port: "6379"             # Port for Redis
-  password: ""             # Password for Redis (if applicable)
-  db: 0                    # Database number for Redis
+  host: "localhost"
+  port: "6379"
+  password: ""
+  db: 0
+
+rabbitmq:
+  username: "user"          # Username for RabbitMQ
+  password: "pass"          # Password for RabbitMQ
+  host: "localhost"         # Host address for RabbitMQ
+  port: "5672"              # Port for RabbitMQ
+  exchanges:
+    currency: "currency_exchange"       # Exchange for currency updates
+    user: "user_exchange"               # Exchange for user-related updates
+    notifications: "notification_exchange" # Exchange for notifications

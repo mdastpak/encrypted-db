@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 
@@ -28,6 +29,18 @@ type Configuration struct {
 		Password string `yaml:"password"`
 		DB       int    `yaml:"db"`
 	} `yaml:"redis"`
+
+	RabbitMQ struct {
+		Username  string `yaml:"username"`
+		Password  string `yaml:"password"`
+		Host      string `yaml:"host"`
+		Port      string `yaml:"port"`
+		Exchanges struct {
+			Currency      string `yaml:"currency"`
+			User          string `yaml:"user"`
+			Notifications string `yaml:"notifications"`
+		} `yaml:"exchanges"`
+	} `yaml:"rabbitmq"`
 }
 
 // Config holds the loaded configuration values
@@ -44,4 +57,15 @@ func LoadConfig() {
 	if err != nil {
 		log.Fatalf("Error parsing config file: %v", err)
 	}
+}
+
+// GetRabbitMQURL constructs the RabbitMQ connection URL from config values
+func GetRabbitMQURL() string {
+	return fmt.Sprintf(
+		"amqp://%s:%s@%s:%s/",
+		Config.RabbitMQ.Username,
+		Config.RabbitMQ.Password,
+		Config.RabbitMQ.Host,
+		Config.RabbitMQ.Port,
+	)
 }

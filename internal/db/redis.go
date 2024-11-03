@@ -32,3 +32,10 @@ func NewRedisService() *RedisService {
 		Ctx:    ctx,
 	}
 }
+
+// Close closes the Redis connection
+func (r *RedisService) Close() {
+	if err := r.Client.Close(); err != nil {
+		log.Printf("Error closing Redis connection: %v", err)
+	}
+}

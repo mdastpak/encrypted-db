@@ -7,9 +7,11 @@ import (
 	"log"
 	"net/http"
 
+	"encrypted-db/config"
 	"encrypted-db/internal/db"
 	"encrypted-db/internal/helpers"
 	"encrypted-db/internal/models"
+	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,17 +21,19 @@ import (
 
 // CurrenciesAdminHandler struct to hold dependencies for admin routes
 type CurrenciesAdminHandler struct {
-	PostgresDB  *db.PostgresService
-	RedisClient *db.RedisService
-	RedisIndex  string // Redis index for base definitions
+	PostgresDB      *db.PostgresService
+	RedisClient     *db.RedisService
+	RedisIndex      string // Redis index for base definitions
+	RabbitMQService *rabbitmq.RabbitMQService
 }
 
 // NewHandler function to initialize CurrenciesAdminHandler with dependencies
-func NewHandler(postgres *db.PostgresService, redis *db.RedisService) *CurrenciesAdminHandler {
+func NewHandler(postgres *db.PostgresService, redis *db.RedisService, rabbitMQ *rabbitmq.RabbitMQService) *CurrenciesAdminHandler {
 	return &CurrenciesAdminHandler{
-		PostgresDB:  postgres,
-		RedisClient: redis,
-		RedisIndex:  "base_definitions", // Setting index for base definitions
+		PostgresDB:      postgres,
+		RedisClient:     redis,
+		RedisIndex:      "base_definitions", // Setting index for base definitions
+		RabbitMQService: rabbitMQ,
 	}
 }
 
@@ -96,6 +100,12 @@ func (h *CurrenciesAdminHandler) CreateCurrency(c *gin.Context) {
 	err = h.AddOrUpdateCurrencyInCache(currency)
 	if err != nil {
 		log.Printf("Error caching currency after database update: %v\n", err)
+	}
+
+	// Publish the update to RabbitMQ for WebSocket listeners
+	currencyCreateMessage := fmt.Sprintf(`{"entity": "currencies", "action": "create", "hk": "%s", "info": %s}`, generatedHK, string(infoJSON))
+	if err := h.RabbitMQService.Publish(config.Config.RabbitMQ.Exchanges.Currency, currencyCreateMessage); err != nil {
+		log.Printf("Failed to publish currency create: %v", err)
 	}
 
 	helpers.SendResponse(c, http.StatusCreated, "Currency created successfully.", nil)
@@ -215,6 +225,12 @@ func (h *CurrenciesAdminHandler) UpdateCurrency(c *gin.Context) {
 		log.Printf("Error caching currency after database update: %v\n", err)
 	}
 
+	// Publish the update to RabbitMQ for WebSocket listeners
+	currencyUpdateMessage := fmt.Sprintf(`{"entity": "currencies", "action": "update", "hk": "%s", "info": %s}`, hk, string(infoJSON))
+	if err := h.RabbitMQService.Publish(config.Config.RabbitMQ.Exchanges.Currency, currencyUpdateMessage); err != nil {
+		log.Printf("Failed to publish currency update: %v", err)
+	}
+
 	helpers.SendResponse(c, http.StatusOK, "Currency updated successfully.", nil)
 }
 
@@ -272,6 +288,13 @@ func (h *CurrenciesAdminHandler) DeleteCurrency(c *gin.Context) {
 	if err != nil {
 		log.Printf("Error deleting currency from cache after database deletion: %v\n", err)
 	}
+
+	// Publish the delete to RabbitMQ for WebSocket listeners
+	currencyDeleteMessage := fmt.Sprintf(`{"entity": "currencies", "action": "delete", "hk": "%s", "info": {"status": "deleted"}}`, hk)
+	if err := h.RabbitMQService.Publish(config.Config.RabbitMQ.Exchanges.Currency, currencyDeleteMessage); err != nil {
+		log.Printf("Failed to publish currency delete: %v", err)
+	}
+
 	helpers.SendResponse(c, http.StatusOK, "Currency deleted successfully.", nil)
 }
 
