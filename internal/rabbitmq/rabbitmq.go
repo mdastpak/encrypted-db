@@ -145,6 +145,7 @@ func (r *RabbitMQService) Publish(exchange, message string) error {
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        []byte(message),
+			Expiration:  "60000", // 1 minute
 		},
 	)
 	if err != nil {
