@@ -17,6 +17,7 @@ import (
 	"encrypted-db/internal/handlers/public"
 	"encrypted-db/internal/handlers/socket"
 	"encrypted-db/internal/handlers/system"
+	"encrypted-db/internal/helpers"
 	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
@@ -80,7 +81,8 @@ func main() {
 
 	// Root endpoint
 	r.GET("/", func(c *gin.Context) {
-		c.String(200, "Welcome to the Encrypted-DB API")
+		helpers.SendResponse(c, http.StatusOK, "Welcome to the Encrypted-DB API", nil)
+		// c.String(200, "Welcome to the Encrypted-DB API")
 	})
 
 	// WebSocket route for currencies
