@@ -1,4 +1,3 @@
-// internal/models/currency.go
 package models
 
 // CurrencyInfo defines the structure of the `info` field in the Currency model

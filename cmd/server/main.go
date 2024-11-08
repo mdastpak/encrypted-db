@@ -12,18 +12,29 @@ import (
 
 	"encrypted-db/config"
 	"encrypted-db/docs"
+	"encrypted-db/internal/auth"
 	"encrypted-db/internal/db"
 	"encrypted-db/internal/handlers/admin"
 	"encrypted-db/internal/handlers/public"
 	"encrypted-db/internal/handlers/socket"
 	"encrypted-db/internal/handlers/system"
+	"encrypted-db/internal/handlers/user"
 	"encrypted-db/internal/helpers"
+	"encrypted-db/internal/models"
 	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+type InfraHandlers struct {
+	Socket *socket.WebSocketHandler
+	System *system.SystemHandler
+	Admin  *admin.AdminHandler
+	Public *public.PublicHandler
+	User   *user.UserHandler
+}
 
 // @title Encrypted-DB API Documentation
 // @version 1.0
@@ -41,34 +52,22 @@ import (
 // @BasePath /
 // @schemes http https
 
-// @x-warning.CORS "Cross-Origin Resource Sharing (CORS) error occurs when trying to access the API from an unauthorized domain. Make sure the origin domain is allowed in CORS settings on the server."
-// @x-warning.NetworkFailure "Network Failure error may happen if there is an issue with the network connection while making a request. Check your internet connection and try again."
-// @x-warning.URLScheme "The URL scheme error 'URL scheme must be \"http\" or \"https\" for CORS request' occurs when the URL protocol is not http or https. Ensure the URL scheme is correctly set to http or https."
 func main() {
 	config.LoadConfig()
 
-	// Initialize database connections
-	postgresService := db.NewPostgresService()
-	defer postgresService.Close() // Ensures PostgreSQL connection is closed when main exits
-
-	redisService := db.NewRedisService()
-	defer redisService.Close() // Ensures Redis connection is closed when main exits
-
-	// Setup RabbitMQ service
-	rabbitMQService := rabbitmq.NewRabbitMQService()
-	defer rabbitMQService.Close() // Ensures RabbitMQ connection is closed when main exits
-
-	// Initialize WebSocket handler with RabbitMQ
-	webSocketHandler := socket.NewWebSocketHandler(rabbitMQService) // Using the new socket package
-
-	systemHandler := system.NewHandler(postgresService, redisService, rabbitMQService)
-	publicHandler := public.NewHandler(postgresService, redisService, rabbitMQService)
-	adminHandler := admin.NewHandler(postgresService, redisService, rabbitMQService)
-
-	// Load and cache currencies on server start
-	err := adminHandler.LoadAndCacheCurrencies()
+	// Initialize services
+	services, cleanup, err := initializeServices()
 	if err != nil {
-		log.Fatalf("Failed to load and cache currencies: %v", err)
+		log.Fatalf("Failed to initialize services: %v", err)
+	}
+	defer cleanup() // Ensure cleanup on exit
+
+	// Initialize handlers
+	handlers := initializeHandlers(services)
+
+	// Initialize cache
+	if err := initializeCache(handlers); err != nil {
+		log.Fatalf("Failed to initialize cache: %v", err)
 	}
 
 	serverAddr := fmt.Sprintf("%s:%s", config.Config.Server.IP, config.Config.Server.Port)
@@ -82,36 +81,10 @@ func main() {
 	// Root endpoint
 	r.GET("/", func(c *gin.Context) {
 		helpers.SendResponse(c, http.StatusOK, "Welcome to the Encrypted-DB API", nil)
-		// c.String(200, "Welcome to the Encrypted-DB API")
 	})
 
-	// WebSocket route for currencies
-	socket := r.Group("/ws")
-	{
-		socket.GET("/", webSocketHandler.ServeWSGin) // WebSocket endpoint for currency updates
-	}
-
-	// System routes
-	system := r.Group("/system")
-	{
-		system.GET("/healthcheck", systemHandler.HealthCheckHandler)
-		system.GET("/ping", systemHandler.PingPongHandler)
-	}
-
-	// Public routes
-	public := r.Group("/public")
-	{
-		public.GET("/currencies", publicHandler.GetActiveCurrencies)
-		public.GET("/currencies/:hk", publicHandler.GetCurrencyByHK)
-	}
-
-	// Admin routes
-	admin := r.Group("/admin")
-	{
-		admin.POST("/currencies", adminHandler.CreateCurrency)
-		admin.PUT("/currencies/:hk", adminHandler.UpdateCurrency)
-		admin.DELETE("/currencies/:hk", adminHandler.DeleteCurrency)
-	}
+	// Initialize routes
+	RouteHandler(r, handlers)
 
 	// Log clickable links for server and Swagger
 	log.Printf("🚀 Starting server on: \033[1;34mhttp://%s\033[0m\n", serverAddr)
@@ -136,7 +109,7 @@ func main() {
 	log.Println("Shutting down server...")
 
 	// Cleanup base definitions from Redis
-	if err := adminHandler.CleanupBaseDefinitions(); err != nil {
+	if err := handlers.Admin.CleanupBaseDefinitions(); err != nil {
 		log.Printf("Error during cleanup: %v\n", err)
 	}
 
@@ -146,4 +119,88 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 	log.Println("Server stopped gracefully")
+}
+
+func initializeServices() (*models.InfraServices, func(), error) {
+	// Initialize PostgreSQL connection
+	postgresService := db.NewPostgresService()
+
+	// Initialize Redis connection
+	redisService := db.NewRedisService()
+
+	// Initialize RabbitMQ connection
+	rabbitMQService := rabbitmq.NewRabbitMQService()
+
+	// Create an InfraServices instance
+	services := &models.InfraServices{
+		Postgres: postgresService,
+		Redis:    redisService,
+		RabbitMQ: rabbitMQService,
+	}
+
+	// Define a cleanup function to close services
+	cleanup := func() {
+		postgresService.Close()
+		redisService.Close()
+		rabbitMQService.Close()
+	}
+
+	return services, cleanup, nil
+}
+
+func initializeHandlers(services *models.InfraServices) *InfraHandlers {
+	return &InfraHandlers{
+		Socket: socket.NewWebSocketHandler(services),
+		System: system.NewHandler(services),
+		Admin:  admin.NewHandler(services),
+		Public: public.NewHandler(services),
+		User:   user.NewHandler(services),
+	}
+}
+
+func initializeCache(ih *InfraHandlers) error {
+	err := ih.Admin.LoadAndCacheCurrencies()
+	if err != nil {
+		return fmt.Errorf("failed to load and cache currencies: %v", err)
+	}
+	return nil
+}
+
+func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
+	// WebSocket route for currencies
+	socketGroup := r.Group("/ws")
+	{
+		socketGroup.GET("/", ih.Socket.ServeWSGin)
+	}
+
+	// System routes
+	systemGroup := r.Group("/system")
+	{
+		systemGroup.GET("/healthcheck", ih.System.HealthCheckHandler)
+		systemGroup.GET("/ping", ih.System.PingPongHandler)
+	}
+
+	// Public routes
+	publicGroup := r.Group("/public")
+	{
+		publicGroup.GET("/currencies", ih.Public.GetActiveCurrencies)
+		publicGroup.GET("/currencies/:hk", ih.Public.GetCurrencyByHK)
+	}
+
+	// Group for admin routes with JWTAdminVerification middleware
+	adminGroup := r.Group("/admin")
+	adminGroup.Use(auth.JWTVerification)
+	{
+		adminGroup.POST("/currencies", ih.Admin.CreateCurrency)
+		adminGroup.PUT("/currencies/:hk", ih.Admin.UpdateCurrency)
+		adminGroup.DELETE("/currencies/:hk", ih.Admin.DeleteCurrency)
+	}
+
+	// Group for user routes with JWTUserVerification middleware
+	userGroup := r.Group("/user")
+	userGroup.Use(auth.JWTVerification)
+	{
+		userGroup.GET("/profile", nil)
+		userGroup.POST("/update", nil)
+	}
 }

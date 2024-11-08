@@ -2,6 +2,7 @@ package system
 
 import (
 	"encrypted-db/internal/db"
+	"encrypted-db/internal/models"
 	"encrypted-db/internal/rabbitmq"
 )
 
@@ -13,10 +14,10 @@ type SystemHandler struct {
 }
 
 // NewHandler creates a new system handler with injected dependencies
-func NewHandler(postgres *db.PostgresService, redis *db.RedisService, rabbitMQ *rabbitmq.RabbitMQService) *SystemHandler {
+func NewHandler(is *models.InfraServices) *SystemHandler {
 	return &SystemHandler{
-		Postgres:        postgres,
-		Redis:           redis,
-		RabbitMQService: rabbitMQ,
+		Postgres:        is.Postgres,
+		Redis:           is.Redis,
+		RabbitMQService: is.RabbitMQ,
 	}
 }

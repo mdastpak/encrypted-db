@@ -15,4 +15,7 @@ func SendResponse(c *gin.Context, status int, message string, info interface{}) 
 		Message: message,
 		Info:    info,
 	})
+	if status != 200 {
+		c.Abort()
+	}
 }

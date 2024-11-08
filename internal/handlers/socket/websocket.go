@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"encrypted-db/config"
+	"encrypted-db/internal/models"
 	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
@@ -26,9 +27,10 @@ var upgrader = websocket.Upgrader{
 }
 
 // NewWebSocketHandler initializes a WebSocketHandler with RabbitMQ service
-func NewWebSocketHandler(rabbitMQService *rabbitmq.RabbitMQService) *WebSocketHandler {
+// func NewWebSocketHandler(rabbitMQService *rabbitmq.RabbitMQService) *WebSocketHandler {
+func NewWebSocketHandler(is *models.InfraServices) *WebSocketHandler {
 	return &WebSocketHandler{
-		RabbitMQService: rabbitMQService,
+		RabbitMQService: is.RabbitMQ,
 		Clients:         make(map[*websocket.Conn]bool),
 	}
 }

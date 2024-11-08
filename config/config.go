@@ -2,8 +2,8 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 
 	"gopkg.in/yaml.v2"
 )
@@ -41,6 +41,18 @@ type Configuration struct {
 			Notifications string `yaml:"notifications"`
 		} `yaml:"exchanges"`
 	} `yaml:"rabbitmq"`
+
+	JWT struct {
+		PrivateKey  string `yaml:"private_key"`
+		PublicKey   string `yaml:"public_key"`
+		Issuer      string `yaml:"issuer"`
+		AccessToken struct {
+			Expiration int `yaml:"expiration"`
+		} `yaml:"access_token"`
+		RefreshToken struct {
+			Expiration int `yaml:"expiration"`
+		} `yaml:"refresh_token"`
+	} `yaml:"jwt"`
 }
 
 // Config holds the loaded configuration values
@@ -48,11 +60,13 @@ var Config Configuration
 
 // LoadConfig loads configuration from config.yaml
 func LoadConfig() {
-	data, err := ioutil.ReadFile("config/config.yaml")
+	// Use os.ReadFile instead of ioutil.ReadFile
+	data, err := os.ReadFile("config/config.yaml")
 	if err != nil {
 		log.Fatalf("Error reading config file: %v", err)
 	}
 
+	// Unmarshal YAML data into the Config structure
 	err = yaml.Unmarshal(data, &Config)
 	if err != nil {
 		log.Fatalf("Error parsing config file: %v", err)

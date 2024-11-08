@@ -306,10 +306,7 @@ const docTemplate = `{
                 }
             }
         }
-    },
-    "x-warning.CORS": "Cross-Origin Resource Sharing (CORS) error occurs when trying to access the API from an unauthorized domain. Make sure the origin domain is allowed in CORS settings on the server.",
-    "x-warning.NetworkFailure": "Network Failure error may happen if there is an issue with the network connection while making a request. Check your internet connection and try again.",
-    "x-warning.URLScheme": "The URL scheme error 'URL scheme must be \"http\" or \"https\" for CORS request' occurs when the URL protocol is not http or https. Ensure the URL scheme is correctly set to http or https."
+    }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it

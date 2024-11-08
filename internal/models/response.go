@@ -1,4 +1,3 @@
-// internal/models/response.go
 package models
 
 // APIResponse defines the standard structure for all API responses

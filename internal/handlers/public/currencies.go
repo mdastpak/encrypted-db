@@ -6,40 +6,13 @@ import (
 	"log"
 	"net/http"
 
-	"encrypted-db/internal/db"
 	"encrypted-db/internal/helpers"
 	"encrypted-db/internal/models"
-	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"golang.org/x/net/context"
 )
-
-// CurrenciesPublicHandler struct to hold dependencies for public routes
-type CurrenciesPublicHandler struct {
-	PostgresDB      *db.PostgresService
-	RedisClient     *db.RedisService
-	RedisIndex      string // Redis index for base definitions
-	RabbitMQService *rabbitmq.RabbitMQService
-}
-
-// NewHandler function to initialize CurrenciesPublicHandler with dependencies
-func NewHandler(postgres *db.PostgresService, redis *db.RedisService, rabbitMQ *rabbitmq.RabbitMQService) *CurrenciesPublicHandler {
-	return &CurrenciesPublicHandler{
-		PostgresDB:      postgres,
-		RedisClient:     redis,
-		RedisIndex:      "base_definitions", // Setting index for base definitions
-		RabbitMQService: rabbitMQ,
-	}
-}
-
-// CurrencyResponse represents the custom output format for each currency
-type CurrencyResponse struct {
-	HK     string              `json:"hk"`
-	Info   models.CurrencyInfo `json:"info"`
-	Status string              `json:"status"`
-}
 
 // GetActiveCurrencies godoc
 // @Summary Get all active currencies
@@ -49,7 +22,7 @@ type CurrencyResponse struct {
 // @Success 200 {array} models.Currency "List of active currencies"
 // @Failure 500 {object} models.APIResponse "Failed to retrieve currencies from cache"
 // @Router /public/currencies [get]
-func (h *CurrenciesPublicHandler) GetActiveCurrencies(c *gin.Context) {
+func (h *PublicHandler) GetActiveCurrencies(c *gin.Context) {
 	// Define the pattern to match all active currency keys
 	pattern := "base_definitions:currency:*"
 
@@ -98,7 +71,7 @@ func (h *CurrenciesPublicHandler) GetActiveCurrencies(c *gin.Context) {
 // @Failure 404 {object} models.APIResponse "Currency not found"
 // @Failure 500 {object} models.APIResponse "Failed to retrieve currency from cache"
 // @Router /public/currencies/{hk} [get]
-func (h *CurrenciesPublicHandler) GetCurrencyByHK(c *gin.Context) {
+func (h *PublicHandler) GetCurrencyByHK(c *gin.Context) {
 	// Retrieve the HK from the URL
 	hk := c.Param("hk")
 

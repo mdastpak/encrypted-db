@@ -1,0 +1,8 @@
+# On Windows Go to cd 'C:\Program Files\Git\usr\bin\'
+# and Use openssl.exe to generate a private key and public key
+
+# Generate a 2048-bit RSA private key
+openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
+
+# Extract the public key from the private key
+openssl rsa -pubout -in private_key.pem -out public_key.pem

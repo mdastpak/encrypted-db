@@ -8,34 +8,14 @@ import (
 	"net/http"
 
 	"encrypted-db/config"
-	"encrypted-db/internal/db"
 	"encrypted-db/internal/helpers"
 	"encrypted-db/internal/models"
-	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"golang.org/x/net/context"
 )
-
-// CurrenciesAdminHandler struct to hold dependencies for admin routes
-type CurrenciesAdminHandler struct {
-	PostgresDB      *db.PostgresService
-	RedisClient     *db.RedisService
-	RedisIndex      string // Redis index for base definitions
-	RabbitMQService *rabbitmq.RabbitMQService
-}
-
-// NewHandler function to initialize CurrenciesAdminHandler with dependencies
-func NewHandler(postgres *db.PostgresService, redis *db.RedisService, rabbitMQ *rabbitmq.RabbitMQService) *CurrenciesAdminHandler {
-	return &CurrenciesAdminHandler{
-		PostgresDB:      postgres,
-		RedisClient:     redis,
-		RedisIndex:      "base_definitions", // Setting index for base definitions
-		RabbitMQService: rabbitMQ,
-	}
-}
 
 // CreateCurrency godoc
 // @Summary Create a new currency
@@ -51,7 +31,7 @@ func NewHandler(postgres *db.PostgresService, redis *db.RedisService, rabbitMQ *
 // @Failure 0 {object} models.APIResponse "Network Failure: Check your connection"
 // @Failure 0 {object} models.APIResponse "URL Scheme Error: Ensure URL scheme is 'http' or 'https'"
 // @Router /admin/currencies [post]
-func (h *CurrenciesAdminHandler) CreateCurrency(c *gin.Context) {
+func (h *AdminHandler) CreateCurrency(c *gin.Context) {
 	var currency models.Currency
 	if err := c.ShouldBindJSON(&currency); err != nil {
 		helpers.SendResponse(c, http.StatusBadRequest, "Invalid input: Please check the provided data format.", nil)
@@ -124,7 +104,7 @@ func (h *CurrenciesAdminHandler) CreateCurrency(c *gin.Context) {
 // @Failure 404 {object} models.APIResponse "Currency not found"
 // @Failure 500 {object} models.APIResponse "Failed to update currency due to an unexpected error"
 // @Router /admin/currencies/{hk} [put]
-func (h *CurrenciesAdminHandler) UpdateCurrency(c *gin.Context) {
+func (h *AdminHandler) UpdateCurrency(c *gin.Context) {
 	hk := c.Param("hk")
 
 	// Log and validate HK as a UUID
@@ -243,7 +223,7 @@ func (h *CurrenciesAdminHandler) UpdateCurrency(c *gin.Context) {
 // @Failure 404 {object} models.APIResponse "Currency not found or already deleted"
 // @Failure 500 {object} models.APIResponse "Failed to delete currency due to an unexpected error"
 // @Router /admin/currencies/{hk} [delete]
-func (h *CurrenciesAdminHandler) DeleteCurrency(c *gin.Context) {
+func (h *AdminHandler) DeleteCurrency(c *gin.Context) {
 	hk := c.Param("hk")
 
 	// Validate if HK is a valid UUID
@@ -299,7 +279,7 @@ func (h *CurrenciesAdminHandler) DeleteCurrency(c *gin.Context) {
 }
 
 // CleanupBaseDefinitions removes all currency-related base definition entries from Redis
-func (h *CurrenciesAdminHandler) CleanupBaseDefinitions() error {
+func (h *AdminHandler) CleanupBaseDefinitions() error {
 	// Define the pattern to match all currency keys
 	pattern := "base_definitions:currency:*"
 
@@ -324,7 +304,7 @@ func (h *CurrenciesAdminHandler) CleanupBaseDefinitions() error {
 }
 
 // AddOrUpdateCurrencyInCache adds or updates a currency in Redis cache
-func (h *CurrenciesAdminHandler) AddOrUpdateCurrencyInCache(currency models.Currency) error {
+func (h *AdminHandler) AddOrUpdateCurrencyInCache(currency models.Currency) error {
 	// Convert currency data to JSON for storage in Redis
 	data, err := json.Marshal(currency)
 	if err != nil {
@@ -347,7 +327,7 @@ func (h *CurrenciesAdminHandler) AddOrUpdateCurrencyInCache(currency models.Curr
 }
 
 // DeleteCurrencyFromCache removes a currency from Redis cache by its HK
-func (h *CurrenciesAdminHandler) DeleteCurrencyFromCache(hk string) error {
+func (h *AdminHandler) DeleteCurrencyFromCache(hk string) error {
 	// Define the cache key based on HK
 	cacheKey := fmt.Sprintf("base_definitions:currency:%s", hk)
 
@@ -363,7 +343,7 @@ func (h *CurrenciesAdminHandler) DeleteCurrencyFromCache(hk string) error {
 }
 
 // LoadAndCacheCurrencies loads all active currencies from the database and caches them in Redis
-func (h *CurrenciesAdminHandler) LoadAndCacheCurrencies() error {
+func (h *AdminHandler) LoadAndCacheCurrencies() error {
 	rows, err := h.PostgresDB.DB.Query("SELECT id, hk, status, info FROM currencies WHERE status='approved' AND deleted_at IS NULL")
 	if err != nil {
 		return err
