@@ -39,3 +39,10 @@ jwt:
   refresh_token:
     expiration: 10080 # minutes
   
+
+otp:
+  auth:
+    name: "AUTH"
+    ttl: 60 # seconds
+    length: 6
+    retry_limit: 3

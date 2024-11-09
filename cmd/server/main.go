@@ -185,6 +185,8 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 	{
 		publicGroup.GET("/currencies", ih.Public.GetActiveCurrencies)
 		publicGroup.GET("/currencies/:hk", ih.Public.GetCurrencyByHK)
+		publicGroup.POST("/auth", ih.Public.RequestOTP)
+		publicGroup.POST("/auth/:uuid", ih.Public.VerifyOTP)
 	}
 
 	// Group for admin routes with JWTAdminVerification middleware

@@ -53,6 +53,15 @@ type Configuration struct {
 			Expiration int `yaml:"expiration"`
 		} `yaml:"refresh_token"`
 	} `yaml:"jwt"`
+
+	OTP struct {
+		AUTH struct {
+			Name       string `yaml:"name"` // Name of the OTP service
+			TTL        int    `yaml:"ttl"`  // Time-to-live in seconds
+			Length     int    `yaml:"length"`
+			RetryLimit int    `yaml:"retry_limit"`
+		} `yaml:"auth"`
+	} `yaml:"otp"`
 }
 
 // Config holds the loaded configuration values
