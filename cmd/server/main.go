@@ -187,11 +187,12 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 		publicGroup.GET("/currencies/:hk", ih.Public.GetCurrencyByHK)
 		publicGroup.POST("/auth", ih.Public.RequestOTP)
 		publicGroup.POST("/auth/:uuid", ih.Public.VerifyOTP)
+		publicGroup.POST("/auth/refresh", ih.Public.RefreshToken)
 	}
 
 	// Group for admin routes with JWTAdminVerification middleware
 	adminGroup := r.Group("/admin")
-	adminGroup.Use(auth.JWTVerification)
+	adminGroup.Use(auth.JWTAdminVerification)
 	{
 		adminGroup.POST("/currencies", ih.Admin.CreateCurrency)
 		adminGroup.PUT("/currencies/:hk", ih.Admin.UpdateCurrency)
@@ -200,9 +201,9 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 
 	// Group for user routes with JWTUserVerification middleware
 	userGroup := r.Group("/user")
-	userGroup.Use(auth.JWTVerification)
+	userGroup.Use(auth.JWTUserVerification)
 	{
-		userGroup.GET("/profile", nil)
+		userGroup.GET("/profile", ih.User.GetActiveCurrencies)
 		userGroup.POST("/update", nil)
 	}
 }

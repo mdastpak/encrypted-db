@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/golang-jwt/jwt/v4"
 )
@@ -16,10 +17,15 @@ var publicKey *rsa.PublicKey
 
 // LoadKeys loads the RSA private and public keys from internal/ssl directory
 func LoadKeys() error {
-	// Load private key from internal/ssl directory
-	privKeyData, err := os.ReadFile(config.Config.JWT.PrivateKey) // Updated path to internal/ssl
-	if err != nil {
 
+	// Build the path to the private key file relative to the root
+	// privateKeyPath := filepath.Join(projectRoot, "internal", "ssl", "user", "private_key.pem")
+	privateKeyPath := filepath.Join(config.Config.JWT.SSL.User.PrivateKey...) // Updated path to internal/ssl
+	log.Printf("Private key path: %s\n", privateKeyPath)
+
+	// Load private key from internal/ssl directory
+	privKeyData, err := os.ReadFile(privateKeyPath) // Updated path to internal/ssl
+	if err != nil {
 		return fmt.Errorf("failed to load private key: %v", err)
 	}
 	privateKey, err = jwt.ParseRSAPrivateKeyFromPEM(privKeyData)
@@ -27,8 +33,10 @@ func LoadKeys() error {
 		return fmt.Errorf("failed to parse private key: %v", err)
 	}
 
+	publicKeyPath := filepath.Join(config.Config.JWT.SSL.User.PublicKey...) // Updated path to internal/ssl
+	log.Printf("Public key path: %s\n", publicKeyPath)
 	// Load public key from internal/ssl directory
-	pubKeyData, err := os.ReadFile(config.Config.JWT.PublicKey) // Updated path to internal/ssl
+	pubKeyData, err := os.ReadFile(publicKeyPath) // Updated path to internal/ssl
 	if err != nil {
 		return fmt.Errorf("failed to load public key: %v", err)
 	}

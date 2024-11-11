@@ -28,11 +28,27 @@ rabbitmq:
 jwt:
   ssl: 
     admin:
-      private_key: "internal/ssl/admin/private_key.pem"
-      public_key: "internal/ssl/admin/public_key.pem"
+      private_key: 
+        - "internal"
+        - "ssl"
+        - "admin"
+        - "private_key.pem"
+      public_key: 
+        - "internal"
+        - "ssl"
+        - "admin"
+        - "public_key.pem"
     user:
-      private_key: "internal/ssl/user/private_key.pem"
-      public_key: "internal/ssl/user/public_key.pem"
+      private_key: 
+        - "internal"
+        - "ssl"
+        - "admin"
+        - "private_key.pem"
+      public_key: 
+        - "internal"
+        - "ssl"
+        - "user"
+        - "public_key.pem"
   issuer: "encrypted-db"
   access_token:
     expiration: 15 # minutes

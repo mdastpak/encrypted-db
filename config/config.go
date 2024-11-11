@@ -43,8 +43,16 @@ type Configuration struct {
 	} `yaml:"rabbitmq"`
 
 	JWT struct {
-		PrivateKey  string `yaml:"private_key"`
-		PublicKey   string `yaml:"public_key"`
+		SSL struct {
+			Admin struct {
+				PrivateKey []string `yaml:"private_key"`
+				PublicKey  []string `yaml:"public_key"`
+			} `yaml:"admin"`
+			User struct {
+				PrivateKey []string `yaml:"private_key"`
+				PublicKey  []string `yaml:"public_key"`
+			} `yaml:"user"`
+		} `yaml:"ssl"`
 		Issuer      string `yaml:"issuer"`
 		AccessToken struct {
 			Expiration int `yaml:"expiration"`
