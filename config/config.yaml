@@ -8,6 +8,7 @@ postgres:
   user: "postgres"
   password: "afnm640"
   dbname: "postgres"
+  ttl: 30
 
 redis:
   host: "localhost"

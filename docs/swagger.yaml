@@ -1,4 +1,3 @@
-basePath: /
 definitions:
   models.APIResponse:
     properties:
@@ -41,19 +40,8 @@ definitions:
       symbol:
         type: string
     type: object
-host: localhost:8080
 info:
-  contact:
-    email: support@swagger.io
-    name: API Support
-    url: http://www.swagger.io/support
-  description: This is a sample server for the encrypted-db project.
-  license:
-    name: Apache 2.0
-    url: http://www.apache.org/licenses/LICENSE-2.0.html
-  termsOfService: http://swagger.io/terms/
-  title: Encrypted-DB API Documentation
-  version: "1.0"
+  contact: {}
 paths:
   /admin/currencies:
     post:
@@ -200,7 +188,4 @@ paths:
       summary: Get a single currency by HK
       tags:
       - Public
-schemes:
-- http
-- https
 swagger: "2.0"

@@ -1,22 +1,25 @@
 package db
 
 import (
-	"database/sql"
+	"context"
 	"encrypted-db/config"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v4/stdlib" // Import for pgx-stdlib compatibility
 )
 
 type PostgresService struct {
-	DB *sql.DB
+	Pool *pgxpool.Pool
 }
 
-// NewPostgresService sets up the PostgreSQL connection and applies migrations
+// NewPostgresService initializes the PostgreSQL connection pool and sets up a default context with timeout
 func NewPostgresService() *PostgresService {
 	// Create the connection string
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -24,44 +27,55 @@ func NewPostgresService() *PostgresService {
 		config.Config.Postgres.User, config.Config.Postgres.Password,
 		config.Config.Postgres.DBName)
 
-	// Connect to the PostgreSQL database
-	db, err := sql.Open("postgres", connStr)
+	// Configure connection pool settings
+	pgxConfig, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
-		log.Fatalf("Error opening PostgreSQL database: %v", err)
+		log.Fatalf("Unable to parse connection string: %v", err)
 	}
+	pgxConfig.MinConns = 5
+	pgxConfig.MaxConns = 10
+	pgxConfig.MaxConnIdleTime = time.Minute * 5
+	pgxConfig.HealthCheckPeriod = time.Minute * 1
 
-	// Test the connection
-	if err = db.Ping(); err != nil {
+	// Connect to the database
+	pool, err := pgxpool.ConnectConfig(context.Background(), pgxConfig)
+	if err != nil {
 		log.Fatalf("Error connecting to PostgreSQL database: %v", err)
 	}
 
-	// Apply migrations
-	if err := runMigrations(db); err != nil {
-		log.Fatalf("Error running migrations: %v", err)
-	}
-
-	log.Println("PostgreSQL connected and migrations applied successfully.")
-
 	return &PostgresService{
-		DB: db,
+		Pool: pool,
 	}
 }
 
-// Close closes the PostgreSQL database connection
+// Close closes the PostgreSQL connection pool and cancels the default context
 func (p *PostgresService) Close() {
-	if err := p.DB.Close(); err != nil {
-		log.Printf("Error closing PostgreSQL connection: %v", err)
-	}
+	p.Pool.Close()
 }
 
-// runMigrations applies migrations from the migrations directory
-func runMigrations(db *sql.DB) error {
+func GetNewContext() context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return ctx
+}
+
+// runMigrations applies migrations using a pgx-compatible database/sql connection
+func runMigrations(connStr string) error {
+	// Parse pgx config for stdlib
+	connConfig, err := pgx.ParseConfig(connStr)
+	if err != nil {
+		return fmt.Errorf("unable to parse connection string for migration: %v", err)
+	}
+
+	// Use pgx-stdlib to open a database/sql connection
+	db := stdlib.OpenDB(*connConfig)
+	defer db.Close()
+
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
 		return fmt.Errorf("could not start migration driver: %v", err)
 	}
 
-	// Replace "path/to/migrations" with the actual path to your migrations folder
 	m, err := migrate.NewWithDatabaseInstance(
 		"file://internal/db/migrations", // Path to migrations folder
 		"postgres", driver)
@@ -69,7 +83,7 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("migration instance creation failed: %v", err)
 	}
 
-	// Apply all up migrations
+	// Apply migrations
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("migration failed: %v", err)
 	}

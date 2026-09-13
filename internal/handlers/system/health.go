@@ -29,7 +29,8 @@ func (h *SystemHandler) HealthCheckHandler(c *gin.Context) {
 
 	// Check PostgreSQL status
 	postgresStatus := "ok"
-	if err := h.Postgres.DB.Ping(); err != nil {
+
+	if err := h.Postgres.Pool.Ping(h.Ctx); err != nil {
 		postgresStatus = "error"
 		healthStatus.Status = "error"
 	}
