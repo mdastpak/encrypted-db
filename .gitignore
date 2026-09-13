@@ -19,3 +19,12 @@
 
 # Go workspace file
 go.work
+
+# Config and secrets
+config/config.yaml
+.env
+.env.*
+!.env.example
+
+# SSL keys
+internal/ssl/**/*.pem

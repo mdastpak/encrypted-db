@@ -19,10 +19,10 @@ type PostgresService struct {
 // NewPostgresService sets up the PostgreSQL connection and applies migrations
 func NewPostgresService() *PostgresService {
 	// Create the connection string
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		config.Config.Postgres.Host, config.Config.Postgres.Port,
 		config.Config.Postgres.User, config.Config.Postgres.Password,
-		config.Config.Postgres.DBName)
+		config.Config.Postgres.DBName, config.Config.Postgres.SSLMode)
 
 	// Connect to the PostgreSQL database
 	db, err := sql.Open("postgres", connStr)

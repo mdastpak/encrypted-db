@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-//go:embed config.yaml
+//go:embed config.example.yaml
 var configEmbed embed.FS
 
 var Config Configuration
@@ -46,6 +46,8 @@ type Configuration struct {
 		User     string `yaml:"user"`
 		Password string `yaml:"password"`
 		DBName   string `yaml:"dbname"`
+		TTL      int    `yaml:"ttl"`
+		SSLMode  string `yaml:"sslmode"`
 	} `yaml:"postgres"`
 
 	Redis struct {
@@ -97,7 +99,7 @@ type Configuration struct {
 	} `yaml:"otp"`
 }
 
-// LoadConfig loads configuration from config.yaml or embedded fallback
+// LoadConfig loads configuration from config.yaml or embedded example, then overlays env vars
 func LoadConfig() {
 	var data []byte
 	var err error
@@ -108,7 +110,7 @@ func LoadConfig() {
 			log.Fatalf("Error reading config file: %v", err)
 		}
 	} else {
-		data, err = configEmbed.ReadFile("config.yaml")
+		data, err = configEmbed.ReadFile("config.example.yaml")
 		if err != nil {
 			log.Fatalf("Error reading embedded config: %v", err)
 		}
@@ -117,6 +119,33 @@ func LoadConfig() {
 	err = yaml.Unmarshal(data, &Config)
 	if err != nil {
 		log.Fatalf("Error parsing config file: %v", err)
+	}
+
+	overlayEnvVars()
+	validateConfig()
+}
+
+func overlayEnvVars() {
+	if v := os.Getenv("POSTGRES_PASSWORD"); v != "" {
+		Config.Postgres.Password = v
+	}
+	if v := os.Getenv("REDIS_PASSWORD"); v != "" {
+		Config.Redis.Password = v
+	}
+	if v := os.Getenv("RABBITMQ_USER"); v != "" {
+		Config.RabbitMQ.Username = v
+	}
+	if v := os.Getenv("RABBITMQ_PASSWORD"); v != "" {
+		Config.RabbitMQ.Password = v
+	}
+}
+
+func validateConfig() {
+	if Config.Postgres.Password == "" {
+		log.Println("WARNING: POSTGRES_PASSWORD is not set")
+	}
+	if Config.RabbitMQ.Username == "" || Config.RabbitMQ.Password == "" {
+		log.Println("WARNING: RABBITMQ credentials are not set")
 	}
 }
 

@@ -54,7 +54,7 @@ type InfraHandlers struct {
 // @schemes http https
 
 var (
-	configPath    string
+	configPath     string
 	migrationsPath string
 )
 
@@ -68,6 +68,10 @@ func main() {
 	config.SetConfigPath(configPath)
 	config.SetMigrationsPath(migrationsPath)
 	config.LoadConfig()
+
+	if os.Getenv("GIN_MODE") == "release" {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
 	// Initialize services
 	services, cleanup, err := initializeServices()
