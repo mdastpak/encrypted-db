@@ -16,7 +16,7 @@ CREATE TABLE users (
 ALTER TABLE users
 ADD CONSTRAINT user_info_structure CHECK (
     info ? 'username' AND
-    info ? 'password' 
+    info ? 'password'
 );
 
 -- Create a unique index for the `username` field in `info`

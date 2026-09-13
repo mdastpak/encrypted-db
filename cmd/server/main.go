@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -52,7 +53,20 @@ type InfraHandlers struct {
 // @BasePath /
 // @schemes http https
 
+var (
+	configPath    string
+	migrationsPath string
+)
+
+func init() {
+	flag.StringVar(&configPath, "config", "config/config.yaml", "Path to config file")
+	flag.StringVar(&migrationsPath, "migrations", "file://internal/db/migrations", "Path to migrations")
+}
+
 func main() {
+	flag.Parse()
+	config.SetConfigPath(configPath)
+	config.SetMigrationsPath(migrationsPath)
 	config.LoadConfig()
 
 	// Initialize services

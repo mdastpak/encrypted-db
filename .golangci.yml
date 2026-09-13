@@ -1,0 +1,41 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  include:
+    - type: unconvert
+
+linters:
+  enable:
+    - govet
+    - revive
+    - gosec
+    - errcheck
+    - gocritic
+    - goimports
+    - gocritic
+    - staticcheck
+    - unused
+
+linters-settings:
+  revive:
+    max-open-files: 200
+  gocritic:
+    enabled-checks:
+      - all
+  goimports:
+    local-prefixes: "encrypted-db"
+
+output:
+  format: colored-line-number
+
+issues:
+  exclude-rules:
+    - linters:
+        - revive
+      text: "package-comments"
+    - linters:
+        - revive
+      text: "exported"
+    - linters:
+        - revive
+      text: "var-naming"

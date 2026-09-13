@@ -27,25 +27,25 @@ rabbitmq:
     notifications: "notification_exchange" # Exchange for notifications
 
 jwt:
-  ssl: 
+  ssl:
     admin:
-      private_key: 
+      private_key:
         - "internal"
         - "ssl"
         - "admin"
         - "private_key.pem"
-      public_key: 
+      public_key:
         - "internal"
         - "ssl"
         - "admin"
         - "public_key.pem"
     user:
-      private_key: 
+      private_key:
         - "internal"
         - "ssl"
         - "admin"
         - "private_key.pem"
-      public_key: 
+      public_key:
         - "internal"
         - "ssl"
         - "user"
@@ -55,7 +55,7 @@ jwt:
     expiration: 15 # minutes
   refresh_token:
     expiration: 10080 # minutes
-  
+
 
 otp:
   auth:
