@@ -5,6 +5,7 @@ import (
 	"encrypted-db/config"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -40,6 +41,10 @@ func NewPostgresService() *PostgresService {
 		log.Fatalf("Error running migrations: %v", err)
 	}
 
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Minute * 5)
+
 	log.Println("PostgreSQL connected and migrations applied successfully.")
 
 	return &PostgresService{
@@ -63,7 +68,7 @@ func runMigrations(db *sql.DB) error {
 
 	// Replace "path/to/migrations" with the actual path to your migrations folder
 	m, err := migrate.NewWithDatabaseInstance(
-		"file://internal/db/migrations", // Path to migrations folder
+		config.MigrationsPath(),
 		"postgres", driver)
 	if err != nil {
 		return fmt.Errorf("migration instance creation failed: %v", err)
