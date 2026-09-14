@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v2"
 )
 
-//go:embed config.example.yaml
 var configEmbed embed.FS
 
 var Config Configuration
@@ -33,7 +33,6 @@ func MigrationsPath() string {
 	return migrationsPath
 }
 
-// Configuration struct to hold all config values
 type Configuration struct {
 	Server struct {
 		IP   string `yaml:"ip"`
@@ -41,20 +40,25 @@ type Configuration struct {
 	} `yaml:"server"`
 
 	Postgres struct {
-		Host     string `yaml:"host"`
-		Port     string `yaml:"port"`
-		User     string `yaml:"user"`
-		Password string `yaml:"password"`
-		DBName   string `yaml:"dbname"`
-		TTL      int    `yaml:"ttl"`
-		SSLMode  string `yaml:"sslmode"`
+		Host            string `yaml:"host"`
+		Port            string `yaml:"port"`
+		User            string `yaml:"user"`
+		Password        string `yaml:"password"`
+		DBName          string `yaml:"dbname"`
+		SSLMode         string `yaml:"sslmode"`
+		MaxOpenConns    int    `yaml:"max_open_conns"`
+		MaxIdleConns    int    `yaml:"max_idle_conns"`
+		ConnMaxLifetime int    `yaml:"conn_max_lifetime_minutes"`
+		ConnMaxIdleTime int    `yaml:"conn_max_idle_time_minutes"`
 	} `yaml:"postgres"`
 
 	Redis struct {
-		Host     string `yaml:"host"`
-		Port     string `yaml:"port"`
-		Password string `yaml:"password"`
-		DB       int    `yaml:"db"`
+		Host         string `yaml:"host"`
+		Port         string `yaml:"port"`
+		Password     string `yaml:"password"`
+		DB           int    `yaml:"db"`
+		PoolSize     int    `yaml:"pool_size"`
+		MinIdleConns int    `yaml:"min_idle_conns"`
 	} `yaml:"redis"`
 
 	RabbitMQ struct {
@@ -97,9 +101,12 @@ type Configuration struct {
 			RetryLimit int    `yaml:"retry_limit"`
 		} `yaml:"auth"`
 	} `yaml:"otp"`
+
+	WebSocket struct {
+		AllowedOrigins []string `yaml:"allowed_origins"`
+	} `yaml:"websocket"`
 }
 
-// LoadConfig loads configuration from config.yaml or embedded example, then overlays env vars
 func LoadConfig() {
 	var data []byte
 	var err error
@@ -121,8 +128,35 @@ func LoadConfig() {
 		log.Fatalf("Error parsing config file: %v", err)
 	}
 
+	setDefaults()
 	overlayEnvVars()
 	validateConfig()
+}
+
+func setDefaults() {
+	if Config.Postgres.MaxOpenConns == 0 {
+		Config.Postgres.MaxOpenConns = 25
+	}
+	if Config.Postgres.MaxIdleConns == 0 {
+		Config.Postgres.MaxIdleConns = 5
+	}
+	if Config.Postgres.ConnMaxLifetime == 0 {
+		Config.Postgres.ConnMaxLifetime = 5
+	}
+	if Config.Postgres.ConnMaxIdleTime == 0 {
+		Config.Postgres.ConnMaxIdleTime = 5
+	}
+
+	if Config.Redis.PoolSize == 0 {
+		Config.Redis.PoolSize = 10
+	}
+	if Config.Redis.MinIdleConns == 0 {
+		Config.Redis.MinIdleConns = 2
+	}
+
+	if Config.Postgres.SSLMode == "" {
+		Config.Postgres.SSLMode = "disable"
+	}
 }
 
 func overlayEnvVars() {
@@ -147,9 +181,19 @@ func validateConfig() {
 	if Config.RabbitMQ.Username == "" || Config.RabbitMQ.Password == "" {
 		log.Println("WARNING: RABBITMQ credentials are not set")
 	}
+	if len(Config.JWT.SSL.User.PrivateKey) == 0 || len(Config.JWT.SSL.User.PublicKey) == 0 {
+		log.Println("WARNING: JWT SSL keys not configured")
+	}
 }
 
-// GetRabbitMQURL constructs the RabbitMQ connection URL from config values
+func (c *Configuration) JWTPrivateKeyPath() string {
+	return filepath.Join(c.JWT.SSL.User.PrivateKey...)
+}
+
+func (c *Configuration) JWTPublicKeyPath() string {
+	return filepath.Join(c.JWT.SSL.User.PublicKey...)
+}
+
 func GetRabbitMQURL() string {
 	return fmt.Sprintf(
 		"amqp://%s:%s@%s:%s/",

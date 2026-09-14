@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -37,22 +38,6 @@ type InfraHandlers struct {
 	User   *user.UserHandler
 }
 
-// @title Encrypted-DB API Documentation
-// @version 1.0
-// @description This is a sample server for the encrypted-db project.
-// @termsOfService http://swagger.io/terms/
-
-// @contact.name API Support
-// @contact.url http://www.swagger.io/support
-// @contact.email support@swagger.io
-
-// @license.name Apache 2.0
-// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
-
-// @host localhost:8080
-// @BasePath /
-// @schemes http https
-
 var (
 	configPath     string
 	migrationsPath string
@@ -73,17 +58,18 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Initialize services
+	if err := initAuthKeys(); err != nil {
+		log.Fatalf("Failed to initialize auth keys: %v", err)
+	}
+
 	services, cleanup, err := initializeServices()
 	if err != nil {
 		log.Fatalf("Failed to initialize services: %v", err)
 	}
-	defer cleanup() // Ensure cleanup on exit
+	defer cleanup()
 
-	// Initialize handlers
 	handlers := initializeHandlers(services)
 
-	// Initialize cache
 	if err := initializeCache(handlers); err != nil {
 		log.Fatalf("Failed to initialize cache: %v", err)
 	}
@@ -91,76 +77,112 @@ func main() {
 	serverAddr := fmt.Sprintf("%s:%s", config.Config.Server.IP, config.Config.Server.Port)
 	swaggerURL := fmt.Sprintf("http://%s/swagger/index.html", serverAddr)
 
-	// Set up gin and Swagger documentation
-	r := gin.Default()
-	docs.SwaggerInfo.BasePath = "/"
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler)) // Swagger endpoint
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(requestIDMiddleware())
+	r.Use(gin.Logger())
 
-	// Root endpoint
+	docs.SwaggerInfo.BasePath = "/"
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	r.GET("/", func(c *gin.Context) {
 		helpers.SendResponse(c, http.StatusOK, "Welcome to the Encrypted-DB API", nil)
 	})
 
-	// Initialize routes
 	RouteHandler(r, handlers)
 
-	// Log clickable links for server and Swagger
-	log.Printf("🚀 Starting server on: \033[1;34mhttp://%s\033[0m\n", serverAddr)
-	log.Printf("📄 Swagger documentation available at: \033[1;34m%s\033[0m\n", swaggerURL)
+	log.Printf("Starting server on: http://%s", serverAddr)
+	log.Printf("Swagger documentation available at: %s", swaggerURL)
 
-	// Start the server
 	srv := &http.Server{
-		Addr:    serverAddr,
-		Handler: r,
+		Addr:         serverAddr,
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
+
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Could not start server: %v\n", err)
+			log.Fatalf("Could not start server: %v", err)
 		}
 	}()
 
-	// Graceful shutdown setup
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	<-quit
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	<-ctx.Done()
 
 	log.Println("Shutting down server...")
 
-	// Cleanup base definitions from Redis
-	if err := handlers.Admin.CleanupBaseDefinitions(); err != nil {
-		log.Printf("Error during cleanup: %v\n", err)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := handlers.Socket.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Error during WebSocket shutdown: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := handlers.Admin.CleanupBaseDefinitions(shutdownCtx); err != nil {
+		log.Printf("Error during cache cleanup: %v", err)
+	}
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 	log.Println("Server stopped gracefully")
 }
 
+func initAuthKeys() error {
+	privateKeyPath := filepath.Join(config.Config.JWT.SSL.User.PrivateKey...)
+	publicKeyPath := filepath.Join(config.Config.JWT.SSL.User.PublicKey...)
+
+	privateKeyPEM, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read private key: %w", err)
+	}
+
+	publicKeyPEM, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read public key: %w", err)
+	}
+
+	return auth.InitKeys(privateKeyPEM, publicKeyPEM)
+}
+
 func initializeServices() (*models.InfraServices, func(), error) {
-	// Initialize PostgreSQL connection
-	postgresService := db.NewPostgresService()
+	postgresService, err := db.NewPostgresService()
+	if err != nil {
+		return nil, nil, err
+	}
 
-	// Initialize Redis connection
-	redisService := db.NewRedisService()
+	redisService, err := db.NewRedisService()
+	if err != nil {
+		postgresService.Close()
+		return nil, nil, err
+	}
 
-	// Initialize RabbitMQ connection
-	rabbitMQService := rabbitmq.NewRabbitMQService()
+	exchanges := []string{
+		config.Config.RabbitMQ.Exchanges.Currency,
+		config.Config.RabbitMQ.Exchanges.User,
+		config.Config.RabbitMQ.Exchanges.Notifications,
+	}
+	rabbitMQService, err := rabbitmq.NewRabbitMQService(exchanges...)
+	if err != nil {
+		postgresService.Close()
+		redisService.Close()
+		return nil, nil, err
+	}
 
-	// Create an InfraServices instance
 	services := &models.InfraServices{
 		Postgres: postgresService,
 		Redis:    redisService,
 		RabbitMQ: rabbitMQService,
 	}
 
-	// Define a cleanup function to close services
 	cleanup := func() {
-		postgresService.Close()
-		redisService.Close()
 		rabbitMQService.Close()
+		redisService.Close()
+		postgresService.Close()
 	}
 
 	return services, cleanup, nil
@@ -177,28 +199,23 @@ func initializeHandlers(services *models.InfraServices) *InfraHandlers {
 }
 
 func initializeCache(ih *InfraHandlers) error {
-	err := ih.Admin.LoadAndCacheCurrencies()
-	if err != nil {
-		return fmt.Errorf("failed to load and cache currencies: %v", err)
-	}
-	return nil
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return ih.Admin.LoadAndCacheCurrencies(ctx)
 }
 
 func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
-	// WebSocket route for currencies
 	socketGroup := r.Group("/ws")
 	{
 		socketGroup.GET("/", ih.Socket.ServeWSGin)
 	}
 
-	// System routes
 	systemGroup := r.Group("/system")
 	{
 		systemGroup.GET("/healthcheck", ih.System.HealthCheckHandler)
 		systemGroup.GET("/ping", ih.System.PingPongHandler)
 	}
 
-	// Public routes
 	publicGroup := r.Group("/public")
 	{
 		publicGroup.GET("/currencies", ih.Public.GetActiveCurrencies)
@@ -208,7 +225,6 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 		publicGroup.POST("/auth/refresh", ih.Public.RefreshToken)
 	}
 
-	// Group for admin routes with JWTAdminVerification middleware
 	adminGroup := r.Group("/admin")
 	adminGroup.Use(auth.JWTAdminVerification)
 	{
@@ -217,11 +233,22 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 		adminGroup.DELETE("/currencies/:hk", ih.Admin.DeleteCurrency)
 	}
 
-	// Group for user routes with JWTUserVerification middleware
 	userGroup := r.Group("/user")
 	userGroup.Use(auth.JWTUserVerification)
 	{
 		userGroup.GET("/profile", ih.User.GetActiveCurrencies)
 		userGroup.POST("/update", nil)
+	}
+}
+
+func requestIDMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			requestID = fmt.Sprintf("%d", time.Now().UnixNano())
+		}
+		c.Set("request_id", requestID)
+		c.Header("X-Request-ID", requestID)
+		c.Next()
 	}
 }

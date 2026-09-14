@@ -4,113 +4,88 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
-	"log"
+
+	"golang.org/x/crypto/pbkdf2"
 )
 
-// EncryptWithAES encrypts the given plaintext with the provided key and salt (UUID)
-func EncryptWithAES(plaintext, key string) (string, error) {
-	log.Println("Starting encryption process")
+const (
+	aesKeySize = 32
+	pbkdf2Iter = 100000
+	nonceSize  = 12
+	saltSize   = 16
+)
 
-	// Adjust key to be exactly 32 bytes for AES-256
-	if len(key) < 32 {
-		log.Println("Extending key length to 32 bytes with padding")
-		key = key + string(make([]byte, 32-len(key))) // Pad with zeros if key is too short
-	} else if len(key) > 32 {
-		log.Println("Trimming key length to 32 bytes")
-		key = key[:32]
-	}
-	log.Printf("Encryption key: %s\n", key)
-
-	// Create AES block cipher
-	block, err := aes.NewCipher([]byte(key))
-	if err != nil {
-		log.Printf("Error creating AES cipher block: %v\n", err)
-		return "", err
-	}
-	log.Println("AES cipher block created successfully")
-
-	// Use GCM for encryption mode
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		log.Printf("Error creating GCM block: %v\n", err)
-		return "", err
-	}
-	log.Println("GCM block created successfully")
-
-	// Create a nonce
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		log.Printf("Error generating nonce: %v\n", err)
-		return "", err
-	}
-	log.Printf("Nonce generated: %x\n", nonce)
-
-	// Encrypt the data and prepend the nonce
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	encryptedText := hex.EncodeToString(ciphertext)
-	log.Printf("Encryption complete: %s\n", encryptedText)
-
-	return encryptedText, nil
+func deriveKey(password, salt []byte) []byte {
+	return pbkdf2.Key(password, salt, pbkdf2Iter, aesKeySize, sha256.New)
 }
 
-// DecryptWithAES decrypts the given ciphertext with the provided key and salt (UUID)
-func DecryptWithAES(ciphertext, key string) (string, error) {
-	log.Println("Starting decryption process")
-
-	// Adjust key to be exactly 32 bytes for AES-256
-	if len(key) < 32 {
-		log.Println("Extending key length to 32 bytes with padding")
-		key = key + string(make([]byte, 32-len(key))) // Pad with zeros if key is too short
-	} else if len(key) > 32 {
-		log.Println("Trimming key length to 32 bytes")
-		key = key[:32]
-	}
-	log.Printf("Decryption key: %s\n", key)
-
-	// Decode the hex-encoded ciphertext
-	data, err := hex.DecodeString(ciphertext)
-	if err != nil {
-		log.Printf("Error decoding ciphertext: %v\n", err)
+func EncryptWithAES(plaintext, password string) (string, error) {
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
 		return "", err
 	}
-	log.Printf("Decoded ciphertext: %x\n", data)
 
-	// Create AES block cipher
-	block, err := aes.NewCipher([]byte(key))
+	key := deriveKey([]byte(password), salt)
+
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		log.Printf("Error creating AES cipher block: %v\n", err)
 		return "", err
 	}
-	log.Println("AES cipher block created successfully")
 
-	// Use GCM for decryption mode
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Printf("Error creating GCM block: %v\n", err)
 		return "", err
 	}
-	log.Println("GCM block created successfully")
 
-	// Extract nonce and actual ciphertext
-	nonceSize := gcm.NonceSize()
-	if len(data) < nonceSize {
-		log.Println("Invalid ciphertext: insufficient length for nonce")
-		return "", errors.New("invalid ciphertext")
+	nonce := make([]byte, nonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
 	}
-	nonce, ciphertextData := data[:nonceSize], data[nonceSize:]
-	log.Printf("Nonce extracted: %x\n", nonce)
-	log.Printf("Ciphertext data extracted: %x\n", ciphertextData)
 
-	// Decrypt the data
-	plaintext, err := gcm.Open(nil, nonce, ciphertextData, nil)
+	ciphertext := gcm.Seal(nil, nonce, []byte(plaintext), nil)
+
+	result := make([]byte, saltSize+nonceSize+len(ciphertext))
+	copy(result[:saltSize], salt)
+	copy(result[saltSize:saltSize+nonceSize], nonce)
+	copy(result[saltSize+nonceSize:], ciphertext)
+
+	return hex.EncodeToString(result), nil
+}
+
+func DecryptWithAES(ciphertextHex, password string) (string, error) {
+	data, err := hex.DecodeString(ciphertextHex)
 	if err != nil {
-		log.Printf("Error during decryption: %v\n", err)
 		return "", err
 	}
-	log.Printf("Decryption complete: %s\n", plaintext)
+
+	if len(data) < saltSize+nonceSize {
+		return "", errors.New("invalid ciphertext: too short")
+	}
+
+	salt := data[:saltSize]
+	nonce := data[saltSize : saltSize+nonceSize]
+	ciphertext := data[saltSize+nonceSize:]
+
+	key := deriveKey([]byte(password), salt)
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
 
 	return string(plaintext), nil
 }

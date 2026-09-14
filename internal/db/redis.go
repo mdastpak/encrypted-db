@@ -2,71 +2,68 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encrypted-db/config"
 	"fmt"
 	"log"
-	"strings"
+	"time"
+
+	"encrypted-db/config"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/google/uuid"
 )
 
 type RedisService struct {
 	Client *redis.Client
-	Ctx    context.Context
 }
 
-// NewRedisService sets up the Redis client and context for injection
-func NewRedisService() *RedisService {
-	ctx := context.Background()
-	client := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", config.Config.Redis.Host, config.Config.Redis.Port),
-		Password: config.Config.Redis.Password,
-		DB:       config.Config.Redis.DB,
-	})
-
-	if _, err := client.Ping(ctx).Result(); err != nil {
-		log.Fatalf("Error connecting to Redis: %v", err)
+func NewRedisService() (*RedisService, error) {
+	opts := &redis.Options{
+		Addr:         fmt.Sprintf("%s:%s", config.Config.Redis.Host, config.Config.Redis.Port),
+		Password:     config.Config.Redis.Password,
+		DB:           config.Config.Redis.DB,
+		PoolSize:     config.Config.Redis.PoolSize,
+		MinIdleConns: config.Config.Redis.MinIdleConns,
+		DialTimeout:  5 * time.Second,
+		ReadTimeout:  3 * time.Second,
+		WriteTimeout: 3 * time.Second,
+		PoolTimeout:  4 * time.Second,
 	}
+
+	client := redis.NewClient(opts)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("error connecting to Redis: %w", err)
+	}
+
+	log.Println("Redis connected successfully.")
 
 	return &RedisService{
 		Client: client,
-		Ctx:    ctx,
-	}
+	}, nil
 }
 
-// Close closes the Redis connection
-func (r *RedisService) Close() {
-	if err := r.Client.Close(); err != nil {
-		log.Printf("Error closing Redis connection: %v", err)
+func (r *RedisService) Close() error {
+	if r.Client != nil {
+		if err := r.Client.Close(); err != nil {
+			log.Printf("Error closing Redis connection: %v", err)
+			return err
+		}
 	}
+	return nil
 }
 
-// GenerateRedisKey generates a Redis key by hashing concatenated input parameters with a separator
-// Example usage
-// fmt.Println(GenerateRedisKey(":", "operation", "contact", "otp"))   // Default separator `:`
-// fmt.Println(GenerateRedisKey("-", "param1", "param2", "param3"))    // Custom separator `-`
-// fmt.Println(GenerateRedisKey("", "single", "value", "test"))        // No separator provided, uses default `:`
-// fmt.Println(GenerateRedisKey(":", ""))                              // Empty value, should use default UUID
-// fmt.Println(GenerateRedisKey(":"))                                  // No values, should use default UUID
-func (r *RedisService) GenerateRedisKey(values ...string) string {
-	// Set default separator
-	separator := ":"
-
-	// Check if values is empty, if so generate a new UUID
-	if len(values) == 0 {
-		newUUID := uuid.New().String()
-		values = []string{newUUID}
+func (r *RedisService) Ping(ctx context.Context) error {
+	if r.Client == nil {
+		return fmt.Errorf("redis not initialized")
 	}
+	return r.Client.Ping(ctx).Err()
+}
 
-	// Concatenate all values with the separator
-	combined := strings.Join(values, separator)
-
-	// Generate SHA-256 hash of the combined string
-	hash := sha256.Sum256([]byte(combined))
-
-	// Return the hash as a hexadecimal string
-	return hex.EncodeToString(hash[:])
+func (r *RedisService) Stats() *redis.PoolStats {
+	if r.Client == nil {
+		return nil
+	}
+	return r.Client.PoolStats()
 }

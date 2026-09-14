@@ -2,37 +2,47 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 )
 
-var ctx = context.Background()
-
 type TokenBlacklist struct {
 	RedisClient *redis.Client
+	Prefix      string
 }
 
-// AddTokenToBlacklist adds a token to Redis blacklist with expiration time
-func (tb *TokenBlacklist) AddTokenToBlacklist(token string, expiresAt time.Time) error {
-	// Calculate time-to-live (TTL) for the token in seconds
+func NewTokenBlacklist(client *redis.Client) *TokenBlacklist {
+	return &TokenBlacklist{
+		RedisClient: client,
+		Prefix:      "blacklist:token:",
+	}
+}
+
+func (tb *TokenBlacklist) tokenKey(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return tb.Prefix + hex.EncodeToString(hash[:])
+}
+
+func (tb *TokenBlacklist) AddTokenToBlacklist(ctx context.Context, token string, expiresAt time.Time) error {
 	ttl := time.Until(expiresAt)
-
-	// Store the token in Redis with expiration time
-	return tb.RedisClient.Set(ctx, token, true, ttl).Err()
+	if ttl <= 0 {
+		return nil
+	}
+	key := tb.tokenKey(token)
+	return tb.RedisClient.Set(ctx, key, "1", ttl).Err()
 }
 
-// IsTokenBlacklisted checks if a token is blacklisted in Redis
-func (tb *TokenBlacklist) IsTokenBlacklisted(token string) (bool, error) {
-	// Check if token exists in Redis
-	val, err := tb.RedisClient.Get(ctx, token).Result()
+func (tb *TokenBlacklist) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
+	key := tb.tokenKey(token)
+	val, err := tb.RedisClient.Get(ctx, key).Result()
 	if err == redis.Nil {
-		// Token not found in blacklist
 		return false, nil
-	} else if err != nil {
-		// Some other Redis error occurred
+	}
+	if err != nil {
 		return false, err
 	}
-	// Token found in blacklist
-	return val == "true", nil
+	return val == "1", nil
 }

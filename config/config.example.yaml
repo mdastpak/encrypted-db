@@ -1,7 +1,3 @@
-# config.example.yaml - Example configuration for encrypted-db
-# Copy this file to config.yaml and fill in your values
-# Or set environment variables for sensitive values
-
 server:
   ip: "127.0.0.1"
   port: "8080"
@@ -12,14 +8,19 @@ postgres:
   user: "postgres"
   password: "${POSTGRES_PASSWORD}"
   dbname: "postgres"
-  ttl: 30
   sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime_minutes: 5
+  conn_max_idle_time_minutes: 5
 
 redis:
   host: "localhost"
   port: "6379"
   password: "${REDIS_PASSWORD}"
   db: 0
+  pool_size: 10
+  min_idle_conns: 2
 
 rabbitmq:
   username: "${RABBITMQ_USER}"
@@ -51,3 +52,6 @@ otp:
     ttl: 60
     length: 6
     retry_limit: 3
+
+websocket:
+  allowed_origins: []

@@ -8,14 +8,19 @@ postgres:
   user: "postgres"
   password: ""
   dbname: "postgres"
-  ttl: 30
   sslmode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime_minutes: 5
+  conn_max_idle_time_minutes: 5
 
 redis:
   host: "localhost"
   port: "6379"
   password: ""
   db: 0
+  pool_size: 10
+  min_idle_conns: 2
 
 rabbitmq:
   username: ""
@@ -37,14 +42,16 @@ jwt:
       public_key: []
   issuer: "encrypted-db"
   access_token:
-    expiration: 15 # minutes
+    expiration: 15
   refresh_token:
-    expiration: 10080 # minutes
-
+    expiration: 10080
 
 otp:
   auth:
     name: "AUTH"
-    ttl: 60 # seconds
+    ttl: 60
     length: 6
     retry_limit: 3
+
+websocket:
+  allowed_origins: []

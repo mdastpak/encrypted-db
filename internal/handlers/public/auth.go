@@ -1,6 +1,7 @@
 package public
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,25 +14,39 @@ import (
 
 	"encrypted-db/config"
 	"encrypted-db/internal/auth"
+	"encrypted-db/internal/db"
 	"encrypted-db/internal/helpers"
+	"encrypted-db/internal/models"
+	"encrypted-db/internal/rabbitmq"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
-	"golang.org/x/net/context"
 )
 
-// OTPRequest struct for OTP request
+type PublicHandler struct {
+	PostgresDB      *db.PostgresService
+	RedisClient     *db.RedisService
+	RabbitMQService *rabbitmq.RabbitMQService
+}
+
+func NewHandler(is *models.InfraServices) *PublicHandler {
+	return &PublicHandler{
+		PostgresDB:      is.Postgres,
+		RedisClient:     is.Redis,
+		RabbitMQService: is.RabbitMQ,
+	}
+}
+
 type OTPRequest struct {
 	Username string `json:"username"`
 }
 
-// VerifyOTPRequest struct for OTP verification request
 type VerifyOTPRequest struct {
 	UUID string `json:"uuid"`
 	OTP  string `json:"otp"`
 }
 
-// User represents a user in the database
 type User struct {
 	ID        int
 	HK        uuid.UUID
@@ -39,13 +54,16 @@ type User struct {
 	Info      map[string]interface{}
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	DeletedAt sql.NullTime // Use sql.NullTime for nullable datetime column
+	DeletedAt sql.NullTime
 }
 
-// RequestOTP handles OTP generation and storage in Redis
-func (h *PublicHandler) RequestOTP(c *gin.Context) {
-	var req OTPRequest
+const otpKeyPrefix = "otp:auth:"
 
+func (h *PublicHandler) RequestOTP(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	var req OTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Username == "" {
 		helpers.SendResponse(c, http.StatusBadRequest, "Invalid request data: Username, Email or Mobile is required", nil)
 		return
@@ -60,10 +78,11 @@ func (h *PublicHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
-	redisKey := h.RedisClient.GenerateRedisKey(config.Config.OTP.AUTH.Name, userUUID, otpCode)
-	authVal, e1 := EncryptWithAES(req.Username, userUUID)
-	if e1 != nil || authVal == "" {
-		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to encrypt OTP data", e1)
+	redisKey := otpKeyPrefix + userUUID + ":" + otpCode
+
+	authVal, err := EncryptWithAES(req.Username, userUUID)
+	if err != nil || authVal == "" {
+		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to encrypt OTP data", err)
 		return
 	}
 
@@ -72,32 +91,52 @@ func (h *PublicHandler) RequestOTP(c *gin.Context) {
 		"uuid": userUUID,
 	}
 
-	otpJSON, _ := json.Marshal(otpData)
-	ttl := time.Duration(config.Config.OTP.AUTH.TTL) * time.Second
-	err := h.RedisClient.Client.Set(context.Background(), redisKey, otpJSON, ttl).Err()
+	otpJSON, err := json.Marshal(otpData)
 	if err != nil {
+		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to marshal OTP data", nil)
+		return
+	}
+
+	ttl := time.Duration(config.Config.OTP.AUTH.TTL) * time.Second
+	if err := h.RedisClient.Client.Set(ctx, redisKey, otpJSON, ttl).Err(); err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to store OTP", nil)
 		return
 	}
 
-	fmt.Printf("OTP Code for %s: %s: %s\n", contactType, req.Username, otpCode)
+	blacklistKey := "uuid_blacklist:" + userUUID
+	h.RedisClient.Client.Set(ctx, blacklistKey, 0, ttl*2)
+
+	log.Printf("OTP Code for %s: %s: %s", contactType, req.Username, otpCode)
 	helpers.SendResponse(c, http.StatusOK, "OTP sent to your contact", gin.H{"type": contactType, "username": maskedContact, "uuid": userUUID})
 }
 
-// VerifyOTP handles OTP verification and user validation
 func (h *PublicHandler) VerifyOTP(c *gin.Context) {
-	var req VerifyOTPRequest
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 
+	var req VerifyOTPRequest
 	reqUUID := c.Param("uuid")
 	if err := c.ShouldBindJSON(&req); err != nil || reqUUID == "" || req.OTP == "" {
 		helpers.SendResponse(c, http.StatusBadRequest, "Invalid request data: UUID and OTP are required", nil)
 		return
 	}
 
-	redisKey := h.RedisClient.GenerateRedisKey(config.Config.OTP.AUTH.Name, reqUUID, req.OTP)
-	otpData, err := h.RedisClient.Client.Get(context.Background(), redisKey).Result()
+	if !validateUUID(reqUUID) {
+		helpers.SendResponse(c, http.StatusBadRequest, "Invalid UUID format", nil)
+		return
+	}
+
+	blacklistKey := "uuid_blacklist:" + reqUUID
+	attempts, _ := h.RedisClient.Client.Get(ctx, blacklistKey).Int()
+	if attempts >= config.Config.OTP.AUTH.RetryLimit {
+		helpers.SendResponse(c, http.StatusTooManyRequests, "Too many failed attempts. Please try again later.", nil)
+		return
+	}
+
+	redisKey := otpKeyPrefix + reqUUID + ":" + req.OTP
+	otpData, err := h.RedisClient.Client.Get(ctx, redisKey).Result()
 	if err != nil {
-		h.incrementBlacklistAttempts(reqUUID)
+		h.incrementBlacklistAttempts(ctx, reqUUID)
 		helpers.SendResponse(c, http.StatusUnauthorized, "Invalid or expired OTP code", nil)
 		return
 	}
@@ -113,28 +152,26 @@ func (h *PublicHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	contact, e1 := DecryptWithAES(otpInfo["auth"].(string), reqUUID)
-	if e1 != nil || contact == "" {
+	contact, err := DecryptWithAES(otpInfo["auth"].(string), reqUUID)
+	if err != nil || contact == "" {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to decrypt OTP data", nil)
 		return
 	}
 
-	h.RedisClient.Client.Del(context.Background(), redisKey)
+	h.RedisClient.Client.Del(ctx, redisKey)
+	h.RedisClient.Client.Del(ctx, blacklistKey)
+
 	contactType, _ := IdentifyInputType(contact)
 	if contactType == "" {
 		helpers.SendResponse(c, http.StatusBadRequest, "Invalid contact information", nil)
 		return
 	}
 
-	// h.checkOrCreateUser(c, contactType, contact)
-
-	userHK, err := h.checkOrCreateUser(contactType, contact)
-
+	userHK, err := h.checkOrCreateUser(ctx, contactType, contact)
 	if err != nil || userHK == uuid.Nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to create user", nil)
 		return
 	}
-	log.Printf("User HK: %s\n", userHK.String())
 
 	accessToken, err := auth.GenerateAccessToken(userHK.String(), "user")
 	if err != nil {
@@ -150,154 +187,189 @@ func (h *PublicHandler) VerifyOTP(c *gin.Context) {
 	auth.SetRefreshTokenCookie(c, refreshToken)
 
 	helpers.SendResponse(c, http.StatusOK, "OTP verified successfully", gin.H{"access_token": accessToken, "refresh_token": refreshToken})
-
 }
 
-// checkOrCreateUser checks if a user exists or creates a new user if not
-// Returns HTTP status code and a message as string
-func (h *PublicHandler) checkOrCreateUser(contactType, contact string) (uuid.UUID, error) {
+func (h *PublicHandler) checkOrCreateUser(ctx context.Context, contactType, contact string) (uuid.UUID, error) {
 	log.Println("Checking if user exists or creating a new user")
 
-	// Construct the query with dynamic JSON extraction
-	query := fmt.Sprintf(`SELECT hk, status FROM users WHERE info->'contact'->>'%s' = $1`, contactType)
+	query := `SELECT hk, status FROM users WHERE info->'contact'->>$1 = $2`
 	var user User
-	// var infoData []byte // Define infoData as []byte to hold JSON data from `info` column
 
-	// Try to find the user in the database
-	err := h.PostgresDB.DB.QueryRow(query, contact).Scan(&user.HK, &user.Status)
+	err := h.PostgresDB.DB.QueryRowContext(ctx, query, contactType, contact).Scan(&user.HK, &user.Status)
 	if err == sql.ErrNoRows {
-		// If user does not exist, create a new user
 		log.Println("User does not exist, creating new user")
-		return h.createUser(contactType, contact)
+		return h.createUser(ctx, contactType, contact)
 	} else if err != nil {
-		// Database error occurred
-		log.Printf("Database error: %v\n", err)
+		log.Printf("Database error: %v", err)
 		return uuid.Nil, fmt.Errorf("database error. please try again")
 	}
 
-	if user.Status == "disabled" {
-		log.Printf("User is disabled. Status: %s\n", user.Status)
+	switch user.Status {
+	case "disabled":
 		return uuid.Nil, fmt.Errorf("user is disabled. please contact support")
-	}
-	if user.Status == "deleted" {
-		log.Printf("User is deleted. Status: %s\n", user.Status)
+	case "deleted":
 		return uuid.Nil, fmt.Errorf("user is deleted. please contact support")
-	}
-	if user.Status == "suspend" {
-		log.Printf("User is suspended. Status: %s\n", user.Status)
+	case "suspend":
 		return uuid.Nil, fmt.Errorf("user is suspended. please contact support")
 	}
 
-	// // Decode JSON data from `info` into the `Info` field
-	// if err := json.Unmarshal(infoData, &user.Info); err != nil {
-	// 	log.Printf("Error unmarshalling user info data: %v\n", err)
-	// 	return uuid.Nil, fmt.Errorf("failed to fetch user info. please try again")
-	// }
-
-	// User already exists
-	log.Printf("User already exists with ID: %s\n", user.HK.String())
+	log.Printf("User already exists with ID: %s", user.HK.String())
 	return user.HK, nil
 }
 
-// createUser inserts a new user in the database
-// Returns HTTP status code and a message as string
-func (h *PublicHandler) createUser(contactType, contact string) (uuid.UUID, error) {
-	// Prepare the user info in JSON format
+func (h *PublicHandler) createUser(ctx context.Context, contactType, contact string) (uuid.UUID, error) {
 	info := map[string]interface{}{
 		"contact": map[string]interface{}{
 			contactType: contact,
 		},
 	}
-	infoData, _ := json.Marshal(info)
+	infoData, err := json.Marshal(info)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to marshal user info: %w", err)
+	}
 
-	// Insert the new user into the database
 	query := `INSERT INTO users (info, status) VALUES ($1, 'approved') RETURNING hk`
 	var userHK uuid.UUID
-	err := h.PostgresDB.DB.QueryRow(query, infoData).Scan(&userHK)
+	err = h.PostgresDB.DB.QueryRowContext(ctx, query, infoData).Scan(&userHK)
 	if err != nil {
-		log.Printf("Failed to insert new user: %v\n", err)
+		log.Printf("Failed to insert new user: %v", err)
 		return uuid.Nil, fmt.Errorf("failed to create user. please try again")
 	}
 
-	// User created successfully
-	log.Printf("New user created successfully with ID: %s\n", userHK)
+	log.Printf("New user created successfully with ID: %s", userHK)
 	return userHK, nil
 }
 
-// IdentifyInputType checks the format of the input, returns the type (email, mobile, or username), and a masked version of the input
+func (h *PublicHandler) incrementBlacklistAttempts(ctx context.Context, uuidStr string) {
+	blacklistKey := "uuid_blacklist:" + uuidStr
+	attempts, _ := h.RedisClient.Client.Get(ctx, blacklistKey).Int()
+	attempts++
+	h.RedisClient.Client.Set(ctx, blacklistKey, attempts, 24*time.Hour)
+
+	if attempts > config.Config.OTP.AUTH.RetryLimit {
+		log.Printf("Retry limit exceeded for UUID: %s", uuidStr)
+	}
+}
+
+func (h *PublicHandler) RefreshToken(c *gin.Context) {
+	auth.RefreshTokenHandler(c)
+}
+
+func validateUUID(s string) bool {
+	_, err := uuid.Parse(s)
+	return err == nil
+}
+
+func GenerateOTP(length int) string {
+	const digits = "0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = digits[time.Now().UnixNano()%10]
+		time.Sleep(1 * time.Nanosecond)
+	}
+	return string(b)
+}
+
 func IdentifyInputType(input string) (string, string) {
-	// Regex patterns
 	emailRegex := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
 	mobileRegex := `^09\d{9}$`
-	usernameRegex := `^[a-zA-Z0-9_]{6,20}$` // Only checks for allowed characters and length
+	usernameRegex := `^[a-zA-Z0-9_]{6,20}$`
 
-	// Helper function to mask a substring
 	mask := func(visibleStart, visibleEnd int, str string) string {
 		if len(str) <= visibleStart+visibleEnd {
-			return str // No masking if input is too short
+			return str
 		}
 		maskedPart := strings.Repeat("*", 5)
 		return str[:visibleStart] + maskedPart + str[len(str)-visibleEnd:]
 	}
 
-	// Check if input matches email format
 	if matched, _ := regexp.MatchString(emailRegex, input); matched {
-		// Mask all except the first 3 characters and domain part
 		atIndex := strings.Index(input, "@")
 		if atIndex > 1 {
 			return "email", mask(3, len(input)-atIndex, input)
 		}
 	}
 
-	// Check if input matches mobile format
 	if matched, _ := regexp.MatchString(mobileRegex, input); matched {
-		// Mask all except the first 3 and last 3 characters for mobile
 		return "mobile", mask(3, 3, input)
 	}
 
-	// Check if input matches username format
 	if matched, _ := regexp.MatchString(usernameRegex, input); matched {
-		// Additional checks for username:
-		// - Should not start with a digit or underscore
-		// - Should not have consecutive underscores
-		// - Should contain at least one alphanumeric character between underscores
-
-		// Check if the first character is a letter (not a digit or underscore)
 		firstChar := rune(input[0])
 		if unicode.IsDigit(firstChar) || firstChar == '_' {
 			return "", ""
 		}
 
-		// Check for consecutive underscores
 		consecutiveUnderscores := regexp.MustCompile(`__`)
 		if consecutiveUnderscores.MatchString(input) {
 			return "", ""
 		}
 
-		// Check if there is at least one alphanumeric character
 		containsAlphanumeric := regexp.MustCompile(`[a-zA-Z0-9]`)
 		if containsAlphanumeric.MatchString(input) {
-			// Mask all except the first 2 and last 3 characters for username
 			return "username", mask(2, 3, input)
 		}
 	}
 
-	// Return "" if none of the patterns match
 	return "", ""
 }
 
-// Increment the blacklist count if OTP fails
-func (h *PublicHandler) incrementBlacklistAttempts(uuid string) {
-	blacklistKey := "uuid_blacklist:" + uuid
-	attempts, _ := h.RedisClient.Client.Get(context.Background(), blacklistKey).Int()
-	attempts++
-	h.RedisClient.Client.Set(context.Background(), blacklistKey, attempts, 0)
+func (h *PublicHandler) GetActiveCurrencies(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 
-	if attempts > config.Config.OTP.AUTH.RetryLimit {
-		log.Printf("Retry limit exceeded for UUID: %s", uuid)
+	pattern := "base_definitions:currency:*"
+
+	var currencies []models.Currency
+	iter := h.RedisClient.Client.Scan(ctx, 0, pattern, 100).Iterator()
+	for iter.Next(ctx) {
+		data, err := h.RedisClient.Client.Get(ctx, iter.Val()).Result()
+		if err != nil {
+			log.Printf("Error retrieving currency from cache for key %s: %v", iter.Val(), err)
+			continue
+		}
+
+		var currency models.Currency
+		if err := json.Unmarshal([]byte(data), &currency); err != nil {
+			log.Printf("Error unmarshalling currency data for key %s: %v", iter.Val(), err)
+			continue
+		}
+
+		currencies = append(currencies, currency)
 	}
+
+	if err := iter.Err(); err != nil {
+		log.Printf("Error during Redis key iteration: %v", err)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to retrieve currencies from cache.", nil)
+		return
+	}
+
+	helpers.SendResponse(c, http.StatusOK, "Active currencies retrieved successfully.", currencies)
 }
 
-func (h *PublicHandler) RefreshToken(c *gin.Context) {
-	auth.RefreshTokenHandler(c)
+func (h *PublicHandler) GetCurrencyByHK(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	hk := c.Param("hk")
+	cacheKey := fmt.Sprintf("base_definitions:currency:%s", hk)
+
+	data, err := h.RedisClient.Client.Get(ctx, cacheKey).Result()
+	if err == redis.Nil {
+		helpers.SendResponse(c, http.StatusNotFound, "Currency not found", nil)
+		return
+	} else if err != nil {
+		log.Printf("Error retrieving currency from cache for HK %s: %v", hk, err)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to retrieve currency from cache.", nil)
+		return
+	}
+
+	var currency models.Currency
+	if err := json.Unmarshal([]byte(data), &currency); err != nil {
+		log.Printf("Error unmarshalling currency data for HK %s: %v", hk, err)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to process currency information.", nil)
+		return
+	}
+
+	helpers.SendResponse(c, http.StatusOK, "Currency retrieved successfully.", currency)
 }

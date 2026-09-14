@@ -1,47 +1,47 @@
 package auth
 
 import (
-	"encrypted-db/internal/helpers"
+	"net/http"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"encrypted-db/internal/helpers"
+
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// LogoutHandler adds the token to blacklist upon user logout
 func LogoutHandler(c *gin.Context, tb *TokenBlacklist) {
-	// Retrieve the token from Authorization header
 	tokenString := c.GetHeader("Authorization")
-
-	// Parse the token to get claims and expiration
-	claims := &Claims{}
-
 	if tokenString == "" {
-		helpers.SendResponse(c, 401, "Unauthorized - Token not provided", nil)
+		helpers.SendResponse(c, http.StatusUnauthorized, "Unauthorized - Token not provided", nil)
 		return
-
 	}
 
-	// Parse token and validate claims
-	token, _ := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		return publicKey, nil
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, ErrInvalidSigningAlg
+		}
+		return PublicKey(), nil
 	})
 
-	if token == nil {
-		helpers.SendResponse(c, 401, "Unauthorized - Invalid token", nil)
+	if err != nil || !token.Valid {
+		helpers.SendResponse(c, http.StatusUnauthorized, "Unauthorized - Invalid token", nil)
 		return
 	}
 
-	// Get expiration time from token claims
-	expiresAt := time.Unix(claims.ExpiresAt, 0)
+	var expiresAt time.Time
+	if claims.ExpiresAt != nil {
+		expiresAt = claims.ExpiresAt.Time
+	} else {
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
 
-	// Add token to blacklist
-	err := tb.AddTokenToBlacklist(tokenString, expiresAt)
-	if err != nil {
-		helpers.SendResponse(c, 500, "Failed to logout", nil)
+	ctx := c.Request.Context()
+	if err := tb.AddTokenToBlacklist(ctx, tokenString, expiresAt); err != nil {
+		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to logout", nil)
 		return
 	}
 
-	// Successfully logged out
-	helpers.SendResponse(c, 200, "Logged out successfully", nil)
+	helpers.SendResponse(c, http.StatusOK, "Logged out successfully", nil)
 }

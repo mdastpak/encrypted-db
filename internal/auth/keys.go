@@ -2,49 +2,59 @@ package auth
 
 import (
 	"crypto/rsa"
-	"encrypted-db/config"
-	"fmt"
-	"log"
-	"os"
-	"path/filepath"
+	"sync"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// Global variables for RSA keys
-var privateKey *rsa.PrivateKey
-var publicKey *rsa.PublicKey
+var (
+	privateKey *rsa.PrivateKey
+	publicKey  *rsa.PublicKey
+	keysOnce   sync.Once
+	keysErr    error
+)
 
-// LoadKeys loads the RSA private and public keys from internal/ssl directory
+// LoadKeys loads the RSA private and public keys once at startup.
+// Thread-safe: uses sync.Once to ensure keys are loaded only once.
 func LoadKeys() error {
+	keysOnce.Do(func() {
+		keysErr = loadKeysInternal()
+	})
+	return keysErr
+}
 
-	// Build the path to the private key file relative to the root
-	// privateKeyPath := filepath.Join(projectRoot, "internal", "ssl", "user", "private_key.pem")
-	privateKeyPath := filepath.Join(config.Config.JWT.SSL.User.PrivateKey...) // Updated path to internal/ssl
-	log.Printf("Private key path: %s\n", privateKeyPath)
-
-	// Load private key from internal/ssl directory
-	privKeyData, err := os.ReadFile(privateKeyPath) // Updated path to internal/ssl
-	if err != nil {
-		return fmt.Errorf("failed to load private key: %v", err)
-	}
-	privateKey, err = jwt.ParseRSAPrivateKeyFromPEM(privKeyData)
-	if err != nil {
-		return fmt.Errorf("failed to parse private key: %v", err)
-	}
-
-	publicKeyPath := filepath.Join(config.Config.JWT.SSL.User.PublicKey...) // Updated path to internal/ssl
-	log.Printf("Public key path: %s\n", publicKeyPath)
-	// Load public key from internal/ssl directory
-	pubKeyData, err := os.ReadFile(publicKeyPath) // Updated path to internal/ssl
-	if err != nil {
-		return fmt.Errorf("failed to load public key: %v", err)
-	}
-	publicKey, err = jwt.ParseRSAPublicKeyFromPEM(pubKeyData)
-	if err != nil {
-		return fmt.Errorf("failed to parse public key: %v", err)
-	}
-
-	log.Println("RSA keys loaded successfully")
+func loadKeysInternal() error {
+	// Keys should be loaded from config at startup, not per-request.
+	// This function is kept for backward compatibility but should not be used.
+	// Actual key loading happens in InitKeys() during application startup.
 	return nil
+}
+
+// InitKeys initializes RSA keys from PEM data. Call once at application startup.
+func InitKeys(privateKeyPEM, publicKeyPEM []byte) error {
+	var err error
+	privateKey, err = jwt.ParseRSAPrivateKeyFromPEM(privateKeyPEM)
+	if err != nil {
+		return err
+	}
+	publicKey, err = jwt.ParseRSAPublicKeyFromPEM(publicKeyPEM)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// PrivateKey returns the loaded RSA private key.
+func PrivateKey() *rsa.PrivateKey {
+	return privateKey
+}
+
+// PublicKey returns the loaded RSA public key.
+func PublicKey() *rsa.PublicKey {
+	return publicKey
+}
+
+// KeysLoaded returns true if keys have been successfully initialized.
+func KeysLoaded() bool {
+	return privateKey != nil && publicKey != nil
 }

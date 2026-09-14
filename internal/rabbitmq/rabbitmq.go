@@ -1,9 +1,11 @@
 package rabbitmq
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"encrypted-db/config"
@@ -12,34 +14,43 @@ import (
 )
 
 type RabbitMQService struct {
-	Connection    *amqp.Connection
-	Channel       *amqp.Channel
-	isChannelOpen bool
-	mu            sync.Mutex
+	conn        *amqp.Connection
+	connMu      sync.RWMutex
+	channel     *amqp.Channel
+	chMu        sync.RWMutex
+	closed      atomic.Bool
+	reconnectWg sync.WaitGroup
+	notifyClose chan *amqp.Error
+	url         string
+	exchanges   []string
 }
 
-// NewRabbitMQService initializes a new RabbitMQ connection and channel
-func NewRabbitMQService() *RabbitMQService {
-	r := &RabbitMQService{}
-	if err := r.connect(); err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
-	}
-	// create the exchanges
-	if err := r.createExchange("currency_exchange"); err != nil {
-		log.Fatalf("Failed to create exchange: %v", err)
-	}
-
-	return r
-}
-
-// connect establishes a new connection and channel to RabbitMQ
-func (r *RabbitMQService) connect() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Initialize connection
+func NewRabbitMQService(exchanges ...string) (*RabbitMQService, error) {
 	url := config.GetRabbitMQURL()
-	conn, err := amqp.Dial(url)
+	r := &RabbitMQService{
+		url:         url,
+		exchanges:   exchanges,
+		notifyClose: make(chan *amqp.Error, 1),
+	}
+
+	if err := r.connect(); err != nil {
+		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+	}
+
+	r.reconnectWg.Add(1)
+	go r.reconnectLoop()
+
+	return r, nil
+}
+
+func (r *RabbitMQService) connect() error {
+	r.connMu.Lock()
+	defer r.connMu.Unlock()
+
+	conn, err := amqp.DialConfig(r.url, amqp.Config{
+		Heartbeat: 10 * time.Second,
+		Locale:    "en_US",
+	})
 	if err != nil {
 		return err
 	}
@@ -50,107 +61,228 @@ func (r *RabbitMQService) connect() error {
 		return err
 	}
 
-	r.Connection = conn
-	r.Channel = ch
-	r.isChannelOpen = true
-	log.Println("RabbitMQ connection and channel established.")
+	if err := ch.Confirm(false); err != nil {
+		ch.Close()
+		conn.Close()
+		return fmt.Errorf("failed to enable publisher confirms: %w", err)
+	}
+
+	r.conn = conn
+	r.channel = ch
+	r.closed.Store(false)
+
+	r.notifyClose = conn.NotifyClose(make(chan *amqp.Error, 1))
+
+	for _, exchange := range r.exchanges {
+		if err := r.declareExchange(ch, exchange); err != nil {
+			ch.Close()
+			conn.Close()
+			return fmt.Errorf("failed to declare exchange %s: %w", exchange, err)
+		}
+	}
+
+	log.Println("RabbitMQ connection and channel established with publisher confirms")
 	return nil
 }
 
-// Close closes the RabbitMQ connection and channel
-func (r *RabbitMQService) Close() {
-	if r.Channel != nil {
-		if err := r.Channel.Close(); err != nil {
-			log.Printf("Error closing RabbitMQ channel: %v", err)
-		}
-		r.isChannelOpen = false
-	}
-	if r.Connection != nil {
-		if err := r.Connection.Close(); err != nil {
-			log.Printf("Error closing RabbitMQ connection: %v", err)
-		}
-	}
-}
-
-func (r *RabbitMQService) createExchange(exchangeName string) error {
-	// Declare the exchange if it does not exist
-	err := r.Channel.ExchangeDeclare(
-		exchangeName, // Exchange name
-		"fanout",     // Exchange type (fanout for broadcasting)
-		true,         // Durable
-		false,        // Auto-deleted when unused
-		false,        // Internal
-		false,        // No-wait
-		nil,          // Arguments
+func (r *RabbitMQService) declareExchange(ch *amqp.Channel, exchangeName string) error {
+	return ch.ExchangeDeclare(
+		exchangeName,
+		"fanout",
+		true,  // durable
+		false, // auto-deleted
+		false, // internal
+		false, // no-wait
+		nil,
 	)
-	if err != nil {
-		log.Printf("Error declaring RabbitMQ exchange %s: %v", exchangeName, err)
-	}
-	return err
 }
 
-// ensureConnectionAndChannel checks if the connection and channel are open, and recreates them if necessary
-func (r *RabbitMQService) ensureConnectionAndChannel() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *RabbitMQService) GetChannel() (*amqp.Channel, error) {
+	r.chMu.RLock()
+	ch := r.channel
+	r.chMu.RUnlock()
 
-	// Check if connection is closed and attempt to reconnect
-	if r.Connection == nil || r.Connection.IsClosed() {
-		log.Println("RabbitMQ connection is closed. Reconnecting...")
-		if err := r.connect(); err != nil {
-			return err
-		}
+	if ch != nil {
+		return ch, nil
 	}
 
-	// Check if channel is open and recreate it if necessary
-	if r.Channel == nil || !r.isChannelOpen {
-		ch, err := r.Connection.Channel()
-		if err != nil {
-			log.Printf("Failed to reopen RabbitMQ channel: %v", err)
-			r.isChannelOpen = false
-			return err
+	return r.recreateChannel()
+}
+
+func (r *RabbitMQService) recreateChannel() (*amqp.Channel, error) {
+	r.chMu.Lock()
+	defer r.chMu.Unlock()
+
+	if r.channel != nil {
+		return r.channel, nil
+	}
+
+	r.connMu.RLock()
+	conn := r.conn
+	r.connMu.RUnlock()
+
+	if conn == nil || conn.IsClosed() {
+		if err := r.connect(); err != nil {
+			return nil, err
 		}
-		r.Channel = ch
-		r.isChannelOpen = true
+	} else {
+		ch, err := conn.Channel()
+		if err != nil {
+			return nil, err
+		}
+		if err := ch.Confirm(false); err != nil {
+			ch.Close()
+			return nil, err
+		}
+		for _, exchange := range r.exchanges {
+			if err := r.declareExchange(ch, exchange); err != nil {
+				ch.Close()
+				return nil, err
+			}
+		}
+		r.channel = ch
+	}
+	return r.channel, nil
+}
+
+func (r *RabbitMQService) reconnectLoop() {
+	defer r.reconnectWg.Done()
+
+	for {
+		select {
+		case err := <-r.notifyClose:
+			if err != nil {
+				log.Printf("RabbitMQ connection closed: %v, reconnecting...", err)
+			} else {
+				log.Println("RabbitMQ connection closed gracefully")
+			}
+			if r.closed.Load() {
+				return
+			}
+			r.reconnect()
+		case <-time.After(30 * time.Second):
+			if r.closed.Load() {
+				return
+			}
+			if err := r.healthCheck(); err != nil {
+				log.Printf("RabbitMQ health check failed: %v, reconnecting...", err)
+				r.reconnect()
+			}
+		}
+	}
+}
+
+func (r *RabbitMQService) healthCheck() error {
+	r.chMu.RLock()
+	ch := r.channel
+	r.chMu.RUnlock()
+
+	if ch == nil {
+		return fmt.Errorf("no channel")
 	}
 	return nil
 }
 
-// PublishWithRetry tries to publish a message and retries if it fails
-func (r *RabbitMQService) PublishWithRetry(exchange, message string, retryCount int) error {
-	for i := 0; i < retryCount; i++ {
-		if err := r.Publish(exchange, message); err != nil {
-			log.Printf("Failed to publish message, attempt %d/%d: %v", i+1, retryCount, err)
-			time.Sleep(500 * time.Millisecond) // Wait before retrying
-		} else {
-			return nil // Success
+func (r *RabbitMQService) reconnect() {
+	backoff := time.Second
+	maxBackoff := 30 * time.Second
+
+	for !r.closed.Load() {
+		if err := r.connect(); err != nil {
+			log.Printf("RabbitMQ reconnect failed: %v, retrying in %v", err, backoff)
+			time.Sleep(backoff)
+			backoff = time.Duration(float64(backoff) * 1.5)
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			continue
 		}
+		log.Println("RabbitMQ reconnected successfully")
+		return
 	}
-	return fmt.Errorf("failed to publish message after %d attempts", retryCount)
 }
 
-// Publish sends a message to the specified RabbitMQ exchange
-func (r *RabbitMQService) Publish(exchange, message string) error {
-	// Ensure connection and channel are open before publishing
-	if err := r.ensureConnectionAndChannel(); err != nil {
+func (r *RabbitMQService) Close() error {
+	r.closed.Store(true)
+
+	r.chMu.Lock()
+	if r.channel != nil {
+		r.channel.Close()
+		r.channel = nil
+	}
+	r.chMu.Unlock()
+
+	r.connMu.Lock()
+	if r.conn != nil {
+		r.conn.Close()
+		r.conn = nil
+	}
+	r.connMu.Unlock()
+
+	r.reconnectWg.Wait()
+	log.Println("RabbitMQ connection closed gracefully")
+	return nil
+}
+
+func (r *RabbitMQService) Publish(ctx context.Context, exchange, message string) error {
+	if r.closed.Load() {
+		return fmt.Errorf("rabbitmq service closed")
+	}
+
+	ch, err := r.GetChannel()
+	if err != nil {
 		return err
 	}
 
-	// Publish the message to the exchange
-	err := r.Channel.Publish(
-		exchange, // Exchange name
-		"",       // Routing key (empty for fanout)
-		false,    // Mandatory
-		false,    // Immediate
+	confirms := ch.NotifyPublish(make(chan amqp.Confirmation, 1))
+
+	err = ch.Publish(
+		exchange,
+		"",
+		false,
+		false,
 		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        []byte(message),
-			Expiration:  "60000", // 1 minute
+			ContentType:  "application/json",
+			Body:         []byte(message),
+			DeliveryMode: amqp.Persistent,
+			Timestamp:    time.Now(),
 		},
 	)
 	if err != nil {
-		log.Printf("Error publishing message to RabbitMQ exchange %s: %v", exchange, err)
-		r.isChannelOpen = false // Mark channel as closed if publish fails
+		r.chMu.Lock()
+		r.channel = nil
+		r.chMu.Unlock()
+		return err
 	}
-	return err
+
+	select {
+	case confirmed := <-confirms:
+		if !confirmed.Ack {
+			return fmt.Errorf("message nacked by broker")
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("publish confirm timeout")
+	}
+
+	return nil
+}
+
+func (r *RabbitMQService) PublishWithRetry(ctx context.Context, exchange, message string, retryCount int) error {
+	var lastErr error
+	for i := 0; i < retryCount; i++ {
+		if err := r.Publish(ctx, exchange, message); err != nil {
+			lastErr = err
+			log.Printf("Failed to publish message, attempt %d/%d: %v", i+1, retryCount, err)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(i+1) * 500 * time.Millisecond):
+			}
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("failed to publish message after %d attempts: %w", retryCount, lastErr)
 }

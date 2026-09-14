@@ -1,20 +1,25 @@
 package socket
 
 import (
+	"encoding/json"
 	"log"
-
-	"github.com/gorilla/websocket"
+	"time"
 )
 
-// handleCurrencyUpdates processes currency update messages and broadcasts them to WebSocket clients
-func (h *WebSocketHandler) handleCurrencyUpdates(message []byte) {
-	h.Mu.Lock()
-	defer h.Mu.Unlock()
-	for client := range h.Clients {
-		if err := client.WriteMessage(websocket.TextMessage, message); err != nil {
-			log.Printf("Error sending currency update to WebSocket client: %v", err)
-			client.Close()
-			delete(h.Clients, client)
-		}
+func (h *WebSocketHandler) handleCurrencyUpdates(body []byte) {
+	var update map[string]interface{}
+	if err := json.Unmarshal(body, &update); err != nil {
+		log.Printf("Error unmarshaling currency update: %v", err)
+		return
 	}
+
+	update["server_time"] = time.Now().UTC().Format(time.RFC3339)
+
+	data, err := json.Marshal(update)
+	if err != nil {
+		log.Printf("Error marshaling broadcast: %v", err)
+		return
+	}
+
+	h.Broadcast(data)
 }

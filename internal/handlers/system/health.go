@@ -1,54 +1,68 @@
 package system
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// HealthStatus represents the overall health status
 type HealthStatus struct {
 	Status  string                   `json:"status"`
 	Details map[string]ServiceStatus `json:"details"`
 }
 
-// ServiceStatus represents the health status of an individual service
 type ServiceStatus struct {
 	Status    string    `json:"status"`
 	LastCheck time.Time `json:"last_check"`
+	LatencyMs int64     `json:"latency_ms,omitempty"`
 }
 
-// HealthCheckHandler checks the health of each service and returns a JSON response
 func (h *SystemHandler) HealthCheckHandler(c *gin.Context) {
-	// Initialize health status response
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
 	healthStatus := HealthStatus{
 		Status:  "ok",
 		Details: make(map[string]ServiceStatus),
 	}
 
-	// Check PostgreSQL status
-	postgresStatus := "ok"
-	if err := h.Postgres.DB.Ping(); err != nil {
-		postgresStatus = "error"
-		healthStatus.Status = "error"
-	}
-	healthStatus.Details["postgres"] = ServiceStatus{
-		Status:    postgresStatus,
-		LastCheck: time.Now(),
-	}
-
-	// Check Redis status
-	redisStatus := "ok"
-	if _, err := h.Redis.Client.Ping(h.Redis.Ctx).Result(); err != nil {
-		redisStatus = "error"
-		healthStatus.Status = "error"
-	}
-	healthStatus.Details["redis"] = ServiceStatus{
-		Status:    redisStatus,
-		LastCheck: time.Now(),
+	start := time.Now()
+	if err := h.Postgres.Ping(ctx); err != nil {
+		healthStatus.Status = "degraded"
+		healthStatus.Details["postgres"] = ServiceStatus{
+			Status:    "error",
+			LastCheck: time.Now(),
+			LatencyMs: time.Since(start).Milliseconds(),
+		}
+	} else {
+		healthStatus.Details["postgres"] = ServiceStatus{
+			Status:    "ok",
+			LastCheck: time.Now(),
+			LatencyMs: time.Since(start).Milliseconds(),
+		}
 	}
 
-	// Return JSON response
+	start = time.Now()
+	if err := h.Redis.Ping(ctx); err != nil {
+		healthStatus.Status = "degraded"
+		healthStatus.Details["redis"] = ServiceStatus{
+			Status:    "error",
+			LastCheck: time.Now(),
+			LatencyMs: time.Since(start).Milliseconds(),
+		}
+	} else {
+		healthStatus.Details["redis"] = ServiceStatus{
+			Status:    "ok",
+			LastCheck: time.Now(),
+			LatencyMs: time.Since(start).Milliseconds(),
+		}
+	}
+
 	c.JSON(http.StatusOK, healthStatus)
+}
+
+func (h *SystemHandler) PingPongHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "pong", "timestamp": time.Now().UTC().Format(time.RFC3339)})
 }
