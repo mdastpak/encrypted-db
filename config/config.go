@@ -42,6 +42,11 @@ type Configuration struct {
 		WriteTimeout    int    `yaml:"write_timeout_seconds"`
 		IdleTimeout     int    `yaml:"idle_timeout_seconds"`
 		Mode            string `yaml:"mode"`
+		TLS             struct {
+			Enabled  bool   `yaml:"enabled"`
+			CertFile string `yaml:"cert_file"`
+			KeyFile  string `yaml:"key_file"`
+		} `yaml:"tls"`
 	} `yaml:"server"`
 
 	Postgres struct {

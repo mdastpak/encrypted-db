@@ -9,6 +9,10 @@ server:
   write_timeout_seconds: 10
   idle_timeout_seconds: 120
   mode: "debug"  # debug, release
+  tls:
+    enabled: false
+    cert_file: "config/ssl/cert.pem"
+    key_file: "config/ssl/key.pem"
 
 postgres:
   host: "localhost"
