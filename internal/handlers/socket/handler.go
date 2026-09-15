@@ -266,8 +266,8 @@ func (h *WebSocketHandler) StartConsumer(ctx context.Context) error {
 }
 
 func (h *WebSocketHandler) consumeRabbitMQ(ctx context.Context) {
-	exchangeName := config.Config.RabbitMQ.Exchanges.Currency
-	queueName := "ws_currency_updates"
+	exchangeName := config.Config.RabbitMQ.Exchanges.PriceUpdates
+	queueName := "ws_price_updates"
 
 	for {
 		select {

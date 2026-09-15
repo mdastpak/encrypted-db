@@ -22,6 +22,7 @@ import (
 	"encrypted-db/internal/handlers/system"
 	"encrypted-db/internal/handlers/user"
 	"encrypted-db/internal/helpers"
+	"encrypted-db/internal/middleware"
 	"encrypted-db/internal/models"
 	"encrypted-db/internal/rabbitmq"
 
@@ -36,6 +37,7 @@ type InfraHandlers struct {
 	Admin  *admin.AdminHandler
 	Public *public.PublicHandler
 	User   *user.UserHandler
+	Redis  *db.RedisService
 }
 
 var (
@@ -162,8 +164,8 @@ func initializeServices() (*models.InfraServices, func(), error) {
 	}
 
 	exchanges := []string{
-		config.Config.RabbitMQ.Exchanges.Currency,
-		config.Config.RabbitMQ.Exchanges.User,
+		config.Config.RabbitMQ.Exchanges.PriceUpdates,
+		config.Config.RabbitMQ.Exchanges.TradeEvents,
 		config.Config.RabbitMQ.Exchanges.Notifications,
 	}
 	rabbitMQService, err := rabbitmq.NewRabbitMQService(exchanges...)
@@ -195,6 +197,7 @@ func initializeHandlers(services *models.InfraServices) *InfraHandlers {
 		Admin:  admin.NewHandler(services),
 		Public: public.NewHandler(services),
 		User:   user.NewHandler(services),
+		Redis:  services.Redis,
 	}
 }
 
@@ -205,8 +208,15 @@ func initializeCache(ih *InfraHandlers) error {
 }
 
 func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
+	rl := middleware.NewRateLimiter(ih.Redis)
+
+	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.CORSMiddleware())
+	r.Use(rl.RESTRateLimit())
+
 	socketGroup := r.Group("/ws")
 	{
+		socketGroup.Use(rl.WSRateLimit())
 		socketGroup.GET("/", ih.Socket.ServeWSGin)
 	}
 
@@ -217,6 +227,7 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 	}
 
 	publicGroup := r.Group("/public")
+	publicGroup.Use(rl.AuthRateLimit("login"))
 	{
 		publicGroup.GET("/currencies", ih.Public.GetActiveCurrencies)
 		publicGroup.GET("/currencies/:hk", ih.Public.GetCurrencyByHK)
@@ -227,6 +238,7 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 
 	adminGroup := r.Group("/admin")
 	adminGroup.Use(auth.JWTAdminVerification)
+	adminGroup.Use(rl.TradingRateLimit())
 	{
 		adminGroup.POST("/currencies", ih.Admin.CreateCurrency)
 		adminGroup.PUT("/currencies/:hk", ih.Admin.UpdateCurrency)
@@ -235,6 +247,7 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 
 	userGroup := r.Group("/user")
 	userGroup.Use(auth.JWTUserVerification)
+	userGroup.Use(rl.TradingRateLimit())
 	{
 		userGroup.GET("/profile", ih.User.GetActiveCurrencies)
 		userGroup.POST("/update", nil)

@@ -69,7 +69,7 @@ func (h *PublicHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
-	otpCode := GenerateOTP(config.Config.OTP.AUTH.Length)
+	otpCode := GenerateOTP(config.Config.OTP.Auth.Length)
 	userUUID := uuid.New().String()
 
 	contactType, maskedContact := IdentifyInputType(req.Username)
@@ -97,7 +97,7 @@ func (h *PublicHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
-	ttl := time.Duration(config.Config.OTP.AUTH.TTL) * time.Second
+	ttl := time.Duration(config.Config.OTP.Auth.TTL) * time.Second
 	if err := h.RedisClient.Client.Set(ctx, redisKey, otpJSON, ttl).Err(); err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to store OTP", nil)
 		return
@@ -128,7 +128,7 @@ func (h *PublicHandler) VerifyOTP(c *gin.Context) {
 
 	blacklistKey := "uuid_blacklist:" + reqUUID
 	attempts, _ := h.RedisClient.Client.Get(ctx, blacklistKey).Int()
-	if attempts >= config.Config.OTP.AUTH.RetryLimit {
+	if attempts >= config.Config.OTP.Auth.RetryLimit {
 		helpers.SendResponse(c, http.StatusTooManyRequests, "Too many failed attempts. Please try again later.", nil)
 		return
 	}
@@ -246,7 +246,7 @@ func (h *PublicHandler) incrementBlacklistAttempts(ctx context.Context, uuidStr 
 	attempts++
 	h.RedisClient.Client.Set(ctx, blacklistKey, attempts, 24*time.Hour)
 
-	if attempts > config.Config.OTP.AUTH.RetryLimit {
+	if attempts > config.Config.OTP.Auth.RetryLimit {
 		log.Printf("Retry limit exceeded for UUID: %s", uuidStr)
 	}
 }
