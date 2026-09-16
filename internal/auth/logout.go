@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"encrypted-db/internal/helpers"
@@ -15,6 +16,9 @@ func LogoutHandler(c *gin.Context, tb *TokenBlacklist) {
 	if tokenString == "" {
 		helpers.SendResponse(c, http.StatusUnauthorized, "Unauthorized - Token not provided", nil)
 		return
+	}
+	if strings.HasPrefix(tokenString, "Bearer ") {
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 	}
 
 	claims := &Claims{}

@@ -63,7 +63,7 @@ func (h *AdminHandler) publishCurrencyEvent(ctx context.Context, action, hk stri
 		return
 	}
 
-	if err := h.RabbitMQService.Publish(ctx, config.Config.RabbitMQ.Exchanges.Currency, string(eventJSON)); err != nil {
+	if err := h.RabbitMQService.Publish(ctx, config.Config.RabbitMQ.Exchanges.PriceUpdates, string(eventJSON)); err != nil {
 		log.Printf("Failed to publish currency %s: %v", action, err)
 	}
 }

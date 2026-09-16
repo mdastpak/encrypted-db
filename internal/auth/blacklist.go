@@ -27,6 +27,9 @@ func (tb *TokenBlacklist) tokenKey(token string) string {
 }
 
 func (tb *TokenBlacklist) AddTokenToBlacklist(ctx context.Context, token string, expiresAt time.Time) error {
+	if tb.RedisClient == nil {
+		return nil // No-op if no Redis client
+	}
 	ttl := time.Until(expiresAt)
 	if ttl <= 0 {
 		return nil
@@ -36,6 +39,9 @@ func (tb *TokenBlacklist) AddTokenToBlacklist(ctx context.Context, token string,
 }
 
 func (tb *TokenBlacklist) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
+	if tb.RedisClient == nil {
+		return false, nil // No-op if no Redis client
+	}
 	key := tb.tokenKey(token)
 	val, err := tb.RedisClient.Get(ctx, key).Result()
 	if err == redis.Nil {

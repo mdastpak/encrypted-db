@@ -1,13 +1,25 @@
+# Crypto Exchange Configuration Example
+# Copy this file to config.yaml and fill in your values
+# Environment variables can override any setting (see overlayEnvVars in config.go)
+
 server:
-  ip: "127.0.0.1"
+  ip: "0.0.0.0"
   port: "8080"
+  read_timeout_seconds: 10
+  write_timeout_seconds: 10
+  idle_timeout_seconds: 120
+  mode: "debug"  # debug, release
+  tls:
+    enabled: false
+    cert_file: "config/ssl/cert.pem"
+    key_file: "config/ssl/key.pem"
 
 postgres:
   host: "localhost"
   port: "5432"
   user: "postgres"
   password: "${POSTGRES_PASSWORD}"
-  dbname: "postgres"
+  dbname: "exchange"
   sslmode: "disable"
   max_open_conns: 25
   max_idle_conns: 5
@@ -28,30 +40,290 @@ rabbitmq:
   host: "localhost"
   port: "5672"
   exchanges:
-    currency: "currency_exchange"
-    user: "user_exchange"
-    notifications: "notification_exchange"
+    price_updates: "price_updates"
+    trade_events: "trade_events"
+    order_events: "order_events"
+    settlement: "settlement"
+    notifications: "notifications"
 
 jwt:
   ssl:
     admin:
-      private_key: []
-      public_key: []
+      private_key: []  # Path segments to admin private key PEM
+      public_key: []   # Path segments to admin public key PEM
     user:
-      private_key: []
-      public_key: []
-  issuer: "encrypted-db"
+      private_key: []  # Path segments to user private key PEM (e.g., ["internal", "ssl", "user", "private_key.pem"])
+      public_key: []   # Path segments to user public key PEM
+  issuer: "encrypted-db-exchange"
   access_token:
-    expiration: 15
+    expiration_minutes: 15
   refresh_token:
-    expiration: 10080
+    expiration_minutes: 10080  # 7 days
 
 otp:
   auth:
     name: "AUTH"
-    ttl: 60
+    ttl_seconds: 60
     length: 6
     retry_limit: 3
 
 websocket:
   allowed_origins: []
+  ping_interval_seconds: 30
+  max_message_size_bytes: 1048576
+
+exchange:
+  name: "EncryptedDB Exchange"
+  timezone: "UTC"
+  maintenance_window:
+    enabled: false
+    start: "02:00"
+    end: "04:00"
+    timezone: "UTC"
+
+assets:
+  registry_path: "configs/assets.yaml"
+  auto_sync: true
+
+markets:
+  default_maker_fee_bps: 10
+  default_taker_fee_bps: 20
+  enable_market_orders: true
+  enable_stop_orders: true
+
+price_aggregator:
+  enabled: true
+  providers:
+    - name: "binance"
+      enabled: true
+      type: "websocket"
+      ws_endpoint: "wss://stream.binance.com:9443/ws"
+      rest_endpoint: "https://api.binance.com"
+      api_key: "${BINANCE_API_KEY}"
+      api_secret: "${BINANCE_API_SECRET}"
+      passphrase: ""
+      symbols:
+        - "btcusdt"
+        - "ethusdt"
+        - "trxusdt"
+        - "usdtusd"
+      rate_limit: 10
+      timeout_seconds: 10
+      reconnect_delay_seconds: 5
+    - name: "coinbase"
+      enabled: false
+      type: "websocket"
+      ws_endpoint: "wss://ws-feed.exchange.coinbase.com"
+      rest_endpoint: "https://api.exchange.coinbase.com"
+      api_key: "${COINBASE_API_KEY}"
+      api_secret: "${COINBASE_API_SECRET}"
+      passphrase: "${COINBASE_PASSPHRASE}"
+      symbols:
+        - "BTC-USD"
+        - "ETH-USD"
+      rate_limit: 10
+      timeout_seconds: 10
+      reconnect_delay_seconds: 5
+    - name: "kraken"
+      enabled: false
+      type: "websocket"
+      ws_endpoint: "wss://ws.kraken.com"
+      rest_endpoint: "https://api.kraken.com"
+      symbols:
+        - "XBT/USD"
+        - "ETH/USD"
+      rate_limit: 5
+      timeout_seconds: 10
+      reconnect_delay_seconds: 10
+    - name: "bybit"
+      enabled: false
+      type: "websocket"
+      ws_endpoint: "wss://stream.bybit.com/v5/public/spot"
+      rest_endpoint: "https://api.bybit.com"
+      symbols:
+        - "BTCUSDT"
+        - "ETHUSDT"
+      rate_limit: 20
+      timeout_seconds: 10
+      reconnect_delay_seconds: 5
+  aggregation_interval_ms: 100
+  vwap_windows_seconds: [1, 5, 60, 300]
+  outlier_threshold_mad: 3.0
+  min_providers: 2
+  stale_threshold_ms: 5000
+  publish_to_redis: true
+  publish_to_rabbitmq: true
+
+custody:
+  providers:
+    # Bitcoin (UTXO)
+    - provider_type: "BTC"
+      asset_ids: ["BTC"]
+      network: "bitcoin"
+      enabled: true
+      rpc_endpoints:
+        - "http://localhost:8332"  # bitcoind RPC
+      ws_endpoints: []
+      explorer_api: "https://blockstream.info/api"
+      explorer_ws: ""
+      api_key: ""
+      api_secret: ""
+      chain_id: ""
+      contract_address: ""
+      decimals: 8
+      confirmations_required: 3
+      min_deposit_amount: "0.0001"
+      min_withdrawal_amount: "0.0005"
+      max_withdrawal_amount: "10.0"
+      default_fee_level: "normal"
+      fee_asset_id: "BTC"
+      hot_wallet_address: ""
+      cold_wallet_address: ""
+      block_poll_interval_seconds: 30
+      reorg_depth: 6
+      sanctions_screening: true
+
+    # Tron (EVM-compatible for USDT TRC20)
+    - provider_type: "EVM"
+      asset_ids: ["TRX", "USDT"]
+      network: "tron"
+      enabled: true
+      rpc_endpoints:
+        - "https://api.trongrid.io"
+        - "https://api.trongrid.io/jsonrpc"
+      ws_endpoints: []
+      explorer_api: "https://apilist.tronscan.org/api"
+      explorer_ws: ""
+      api_key: "${TRON_API_KEY}"
+      api_secret: ""
+      chain_id: "tron-mainnet"
+      contract_address: ""
+      decimals: 6
+      confirmations_required: 19
+      min_deposit_amount: "10"
+      min_withdrawal_amount: "20"
+      max_withdrawal_amount: "1000000"
+      default_fee_level: "normal"
+      fee_asset_id: "TRX"
+      hot_wallet_address: ""
+      cold_wallet_address: ""
+      block_poll_interval_seconds: 10
+      reorg_depth: 19
+      sanctions_screening: true
+
+    # Internal ledger (off-chain settlement)
+    - provider_type: "INTERNAL"
+      asset_ids: ["USD", "EUR", "BTC", "ETH", "TRX", "USDT"]
+      network: "internal"
+      enabled: true
+      rpc_endpoints: []
+      confirmations_required: 0
+      min_deposit_amount: "0"
+      min_withdrawal_amount: "0"
+      max_withdrawal_amount: "0"
+      default_fee_level: "normal"
+      fee_asset_id: ""
+      hot_wallet_address: ""
+      cold_wallet_address: ""
+      block_poll_interval_seconds: 0
+      reorg_depth: 0
+      sanctions_screening: false
+
+fiat:
+  providers:
+    - name: "partner_bank"
+      enabled: false
+      type: "bank_api"
+      endpoint: "https://api.partnerbank.com/v1"
+      api_key: "${FIAT_PROVIDER_API_KEY}"
+      api_secret: "${FIAT_PROVIDER_API_SECRET}"
+      cert_path: ""
+      key_path: ""
+      ca_path: ""
+      supported_assets: ["USD", "EUR"]
+      webhook_secret: "${FIAT_WEBHOOK_SECRET}"
+      timeout_seconds: 30
+
+compliance:
+  sanctions:
+    providers:
+      - name: "ofac"
+        enabled: true
+        priority: 1
+        endpoint: "https://www.treasury.gov/ofac/downloads/sdn.csv"
+        timeout_seconds: 30
+      - name: "chainalysis"
+        enabled: false
+        api_key: "${CHAINALYSIS_API_KEY}"
+        api_secret: "${CHAINALYSIS_API_SECRET}"
+        endpoint: "https://api.chainalysis.com/api"
+        priority: 2
+        timeout_seconds: 10
+      - name: "trm"
+        enabled: false
+        api_key: "${TRM_API_KEY}"
+        api_secret: "${TRM_API_SECRET}"
+        endpoint: "https://api.trmlabs.com/v1"
+        priority: 3
+        timeout_seconds: 10
+    screen_on_deposit: true
+    screen_on_withdrawal: true
+    screen_on_trade: false
+    periodic_rescreen_hours: 24
+
+  aml:
+    enabled: true
+    rules_path: "configs/aml_rules.yaml"
+
+  kyc:
+    providers:
+      - name: "manual"
+        enabled: true
+        endpoint: ""
+        timeout_seconds: 0
+      - name: "sumsub"
+        enabled: false
+        api_key: "${SUMSUB_API_KEY}"
+        api_secret: "${SUMSUB_API_SECRET}"
+        endpoint: "https://api.sumsub.com"
+        webhook_secret: "${SUMSUB_WEBHOOK_SECRET}"
+        timeout_seconds: 30
+      - name: "onfido"
+        enabled: false
+        api_key: "${ONFIDO_API_KEY}"
+        api_secret: "${ONFIDO_API_SECRET}"
+        endpoint: "https://api.onfido.com/v3.6"
+        webhook_secret: "${ONFIDO_WEBHOOK_SECRET}"
+        timeout_seconds: 30
+    default_tier: "STANDARD"
+    auto_approve_low_risk: false
+
+observability:
+  logging:
+    level: "info"
+    format: "json"
+    output: "stdout"
+    file_path: ""
+  metrics:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  tracing:
+    enabled: false
+    endpoint: "${OTEL_ENDPOINT}"
+    service_name: "encrypted-db-exchange"
+    sample_rate: 0.1
+
+rate_limits:
+  rest:
+    requests_per_second: 100
+    burst: 200
+  ws:
+    messages_per_second: 50
+    burst: 100
+  trading:
+    orders_per_second: 10
+    burst: 20
+  auth:
+    login_attempts_per_minute: 5
+    otp_requests_per_hour: 10

@@ -1,0 +1,295 @@
+# Asset Registry
+# This file defines all supported assets for the exchange
+# Each asset can be FIAT, COIN, TOKEN, STABLE, or WRAPPED
+
+assets:
+  # Fiat Currencies
+  - symbol: "USD"
+    name: "US Dollar"
+    type: "FIAT"
+    status: "ACTIVE"
+    decimals: 2
+    network: "internal"
+    min_withdrawal: "10.00"
+    max_withdrawal: "100000.00"
+    withdrawal_fee: "2.50"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "OFF_CHAIN"
+    description: "United States Dollar"
+    logo_url: "https://assets.encrypted-db.com/fiat/usd.png"
+
+  - symbol: "EUR"
+    name: "Euro"
+    type: "FIAT"
+    status: "ACTIVE"
+    decimals: 2
+    network: "internal"
+    min_withdrawal: "10.00"
+    max_withdrawal: "100000.00"
+    withdrawal_fee: "2.50"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "OFF_CHAIN"
+    description: "European Euro"
+    logo_url: "https://assets.encrypted-db.com/fiat/eur.png"
+
+  - symbol: "IRR"
+    name: "Iranian Rial"
+    type: "FIAT"
+    status: "ACTIVE"
+    decimals: 0
+    network: "internal"
+    min_withdrawal: "500000"
+    max_withdrawal: "5000000000"
+    withdrawal_fee: "10000"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "OFF_CHAIN"
+    description: "Iranian Rial (Toman = 10 Rials)"
+    logo_url: "https://assets.encrypted-db.com/fiat/irr.png"
+
+  # Major Cryptocurrencies (Coins)
+  - symbol: "BTC"
+    name: "Bitcoin"
+    type: "COIN"
+    status: "ACTIVE"
+    decimals: 8
+    network: "bitcoin"
+    native_symbol: "BTC"
+    min_withdrawal: "0.0005"
+    max_withdrawal: "10.0"
+    withdrawal_fee: "0.0005"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "Bitcoin - The original cryptocurrency"
+    logo_url: "https://assets.encrypted-db.com/crypto/btc.png"
+    website: "https://bitcoin.org"
+    explorer_url: "https://blockstream.info/tx/"
+
+  - symbol: "ETH"
+    name: "Ethereum"
+    type: "COIN"
+    status: "ACTIVE"
+    decimals: 18
+    network: "ethereum"
+    native_symbol: "ETH"
+    min_withdrawal: "0.005"
+    max_withdrawal: "100.0"
+    withdrawal_fee: "0.005"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "Ethereum - Smart contract platform"
+    logo_url: "https://assets.encrypted-db.com/crypto/eth.png"
+    website: "https://ethereum.org"
+    explorer_url: "https://etherscan.io/tx/"
+
+  - symbol: "TRX"
+    name: "TRON"
+    type: "COIN"
+    status: "ACTIVE"
+    decimals: 6
+    network: "tron"
+    native_symbol: "TRX"
+    min_withdrawal: "20.0"
+    max_withdrawal: "1000000.0"
+    withdrawal_fee: "1.0"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "TRON - High throughput blockchain"
+    logo_url: "https://assets.encrypted-db.com/crypto/trx.png"
+    website: "https://tron.network"
+    explorer_url: "https://tronscan.org/#/transaction/"
+
+  # Stablecoins
+  - symbol: "USDT"
+    name: "Tether USD"
+    type: "STABLE"
+    status: "ACTIVE"
+    decimals: 6
+    network: "tron"
+    contract_address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+    native_symbol: "TRX"
+    min_withdrawal: "20.0"
+    max_withdrawal: "1000000.0"
+    withdrawal_fee: "1.0"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "Tether USD on TRON (TRC20)"
+    logo_url: "https://assets.encrypted-db.com/crypto/usdt.png"
+    website: "https://tether.to"
+    explorer_url: "https://tronscan.org/#/token/"
+
+  - symbol: "USDT_ERC20"
+    name: "Tether USD (ERC20)"
+    type: "STABLE"
+    status: "INACTIVE"
+    decimals: 6
+    network: "ethereum"
+    contract_address: "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+    native_symbol: "ETH"
+    min_withdrawal: "10.0"
+    max_withdrawal: "500000.0"
+    withdrawal_fee: "15.0"
+    deposit_enabled: false
+    withdrawal_enabled: false
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "Tether USD on Ethereum (ERC20)"
+    logo_url: "https://assets.encrypted-db.com/crypto/usdt.png"
+
+  - symbol: "USDC"
+    name: "USD Coin"
+    type: "STABLE"
+    status: "INACTIVE"
+    decimals: 6
+    network: "ethereum"
+    contract_address: "0xA0b86a33E6441b8C4C8C0C4C4C4C4C4C4C4C4C4C"
+    native_symbol: "ETH"
+    min_withdrawal: "10.0"
+    max_withdrawal: "500000.0"
+    withdrawal_fee: "10.0"
+    deposit_enabled: false
+    withdrawal_enabled: false
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "USD Coin on Ethereum (ERC20)"
+    logo_url: "https://assets.encrypted-db.com/crypto/usdc.png"
+
+  # Wrapped Assets
+  - symbol: "WBTC"
+    name: "Wrapped Bitcoin"
+    type: "WRAPPED"
+    status: "INACTIVE"
+    decimals: 8
+    network: "ethereum"
+    contract_address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+    native_symbol: "ETH"
+    min_withdrawal: "0.001"
+    max_withdrawal: "5.0"
+    withdrawal_fee: "0.001"
+    deposit_enabled: false
+    withdrawal_enabled: false
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "Wrapped Bitcoin on Ethereum (ERC20)"
+    logo_url: "https://assets.encrypted-db.com/crypto/wbtc.png"
+
+  # TRC20 Tokens
+  - symbol: "USDT"
+    name: "Tether USD"
+    type: "TOKEN"
+    status: "ACTIVE"
+    decimals: 6
+    network: "tron"
+    contract_address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+    native_symbol: "TRX"
+    min_withdrawal: "20.0"
+    max_withdrawal: "1000000.0"
+    withdrawal_fee: "1.0"
+    deposit_enabled: true
+    withdrawal_enabled: true
+    custody_mode: "ON_CHAIN"
+    requires_tag: false
+    description: "Tether USD on TRON (TRC20)"
+    logo_url: "https://assets.encrypted-db.com/crypto/usdt.png"
+
+# Asset Pairs (Markets) - Base/Quote
+# These will be created as markets in the database
+markets:
+  - base: "BTC"
+    quote: "USDT"
+    status: "ACTIVE"
+    min_order_size: "0.0001"
+    max_order_size: "10.0"
+    min_notional: "10.0"
+    tick_size: "0.01"
+    lot_size: "0.0001"
+    maker_fee_bps: 10
+    taker_fee_bps: 20
+
+  - base: "ETH"
+    quote: "USDT"
+    status: "ACTIVE"
+    min_order_size: "0.001"
+    max_order_size: "100.0"
+    min_notional: "10.0"
+    tick_size: "0.01"
+    lot_size: "0.001"
+    maker_fee_bps: 10
+    taker_fee_bps: 20
+
+  - base: "TRX"
+    quote: "USDT"
+    status: "ACTIVE"
+    min_order_size: "10.0"
+    max_order_size: "1000000.0"
+    min_notional: "10.0"
+    tick_size: "0.0001"
+    lot_size: "1.0"
+    maker_fee_bps: 10
+    taker_fee_bps: 20
+
+  - base: "BTC"
+    quote: "USD"
+    status: "ACTIVE"
+    min_order_size: "0.0001"
+    max_order_size: "10.0"
+    min_notional: "10.0"
+    tick_size: "0.01"
+    lot_size: "0.0001"
+    maker_fee_bps: 10
+    taker_fee_bps: 20
+
+  - base: "ETH"
+    quote: "USD"
+    status: "ACTIVE"
+    min_order_size: "0.001"
+    max_order_size: "100.0"
+    min_notional: "10.0"
+    tick_size: "0.01"
+    lot_size: "0.001"
+    maker_fee_bps: 10
+    taker_fee_bps: 20
+
+  - base: "TRX"
+    quote: "USD"
+    status: "ACTIVE"
+    min_order_size: "10.0"
+    max_order_size: "1000000.0"
+    min_notional: "10.0"
+    tick_size: "0.0001"
+    lot_size: "1.0"
+    maker_fee_bps: 10
+    taker_fee_bps: 20
+
+  # Cross pairs
+  - base: "BTC"
+    quote: "TRX"
+    status: "INACTIVE"
+    min_order_size: "0.0001"
+    max_order_size: "10.0"
+    min_notional: "1000.0"
+    tick_size: "1.0"
+    lot_size: "0.0001"
+    maker_fee_bps: 15
+    taker_fee_bps: 25
+
+  - base: "ETH"
+    quote: "BTC"
+    status: "INACTIVE"
+    min_order_size: "0.001"
+    max_order_size: "100.0"
+    min_notional: "0.01"
+    tick_size: "0.00001"
+    lot_size: "0.001"
+    maker_fee_bps: 15
+    taker_fee_bps: 25

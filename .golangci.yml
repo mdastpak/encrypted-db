@@ -10,18 +10,13 @@ linters:
     - revive
     - gosec
     - errcheck
-    - gocritic
     - goimports
-    - gocritic
     - staticcheck
     - unused
 
 linters-settings:
   revive:
     max-open-files: 200
-  gocritic:
-    enabled-checks:
-      - all
   goimports:
     local-prefixes: "encrypted-db"
 

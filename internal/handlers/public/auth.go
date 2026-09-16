@@ -2,6 +2,7 @@ package public
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -69,7 +70,7 @@ func (h *PublicHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
-	otpCode := GenerateOTP(config.Config.OTP.AUTH.Length)
+	otpCode := GenerateOTP(config.Config.OTP.Auth.Length)
 	userUUID := uuid.New().String()
 
 	contactType, maskedContact := IdentifyInputType(req.Username)
@@ -97,7 +98,7 @@ func (h *PublicHandler) RequestOTP(c *gin.Context) {
 		return
 	}
 
-	ttl := time.Duration(config.Config.OTP.AUTH.TTL) * time.Second
+	ttl := time.Duration(config.Config.OTP.Auth.TTL) * time.Second
 	if err := h.RedisClient.Client.Set(ctx, redisKey, otpJSON, ttl).Err(); err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Failed to store OTP", nil)
 		return
@@ -128,7 +129,7 @@ func (h *PublicHandler) VerifyOTP(c *gin.Context) {
 
 	blacklistKey := "uuid_blacklist:" + reqUUID
 	attempts, _ := h.RedisClient.Client.Get(ctx, blacklistKey).Int()
-	if attempts >= config.Config.OTP.AUTH.RetryLimit {
+	if attempts >= config.Config.OTP.Auth.RetryLimit {
 		helpers.SendResponse(c, http.StatusTooManyRequests, "Too many failed attempts. Please try again later.", nil)
 		return
 	}
@@ -246,7 +247,7 @@ func (h *PublicHandler) incrementBlacklistAttempts(ctx context.Context, uuidStr 
 	attempts++
 	h.RedisClient.Client.Set(ctx, blacklistKey, attempts, 24*time.Hour)
 
-	if attempts > config.Config.OTP.AUTH.RetryLimit {
+	if attempts > config.Config.OTP.Auth.RetryLimit {
 		log.Printf("Retry limit exceeded for UUID: %s", uuidStr)
 	}
 }
@@ -263,9 +264,12 @@ func validateUUID(s string) bool {
 func GenerateOTP(length int) string {
 	const digits = "0123456789"
 	b := make([]byte, length)
+	randomBytes := make([]byte, length)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return ""
+	}
 	for i := range b {
-		b[i] = digits[time.Now().UnixNano()%10]
-		time.Sleep(1 * time.Nanosecond)
+		b[i] = digits[int(randomBytes[i])%len(digits)]
 	}
 	return string(b)
 }
@@ -320,7 +324,7 @@ func (h *PublicHandler) GetActiveCurrencies(c *gin.Context) {
 
 	pattern := "base_definitions:currency:*"
 
-	var currencies []models.Currency
+	currencies := make([]models.Currency, 0)
 	iter := h.RedisClient.Client.Scan(ctx, 0, pattern, 100).Iterator()
 	for iter.Next(ctx) {
 		data, err := h.RedisClient.Client.Get(ctx, iter.Val()).Result()

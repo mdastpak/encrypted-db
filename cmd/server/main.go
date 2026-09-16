@@ -22,6 +22,7 @@ import (
 	"encrypted-db/internal/handlers/system"
 	"encrypted-db/internal/handlers/user"
 	"encrypted-db/internal/helpers"
+	"encrypted-db/internal/middleware"
 	"encrypted-db/internal/models"
 	"encrypted-db/internal/rabbitmq"
 
@@ -31,11 +32,13 @@ import (
 )
 
 type InfraHandlers struct {
-	Socket *socket.WebSocketHandler
-	System *system.SystemHandler
-	Admin  *admin.AdminHandler
-	Public *public.PublicHandler
-	User   *user.UserHandler
+	Socket        *socket.WebSocketHandler
+	System        *system.SystemHandler
+	Admin         *admin.AdminHandler
+	Public        *public.PublicHandler
+	User          *user.UserHandler
+	Redis         *db.RedisService
+	TokenBlacklist *auth.TokenBlacklist
 }
 
 var (
@@ -75,7 +78,6 @@ func main() {
 	}
 
 	serverAddr := fmt.Sprintf("%s:%s", config.Config.Server.IP, config.Config.Server.Port)
-	swaggerURL := fmt.Sprintf("http://%s/swagger/index.html", serverAddr)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -91,19 +93,29 @@ func main() {
 
 	RouteHandler(r, handlers)
 
-	log.Printf("Starting server on: http://%s", serverAddr)
-	log.Printf("Swagger documentation available at: %s", swaggerURL)
+	protocol := "http"
+	if config.Config.Server.TLS.Enabled {
+		protocol = "https"
+	}
+	log.Printf("Starting server on: %s://%s", protocol, serverAddr)
+	log.Printf("Swagger documentation available at: %s://%s/swagger/index.html", protocol, serverAddr)
 
 	srv := &http.Server{
 		Addr:         serverAddr,
 		Handler:      r,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  time.Duration(config.Config.Server.ReadTimeout) * time.Second,
+		WriteTimeout: time.Duration(config.Config.Server.WriteTimeout) * time.Second,
+		IdleTimeout:  time.Duration(config.Config.Server.IdleTimeout) * time.Second,
 	}
 
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		var err error
+		if config.Config.Server.TLS.Enabled {
+			err = srv.ListenAndServeTLS(config.Config.Server.TLS.CertFile, config.Config.Server.TLS.KeyFile)
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Could not start server: %v", err)
 		}
 	}()
@@ -162,8 +174,8 @@ func initializeServices() (*models.InfraServices, func(), error) {
 	}
 
 	exchanges := []string{
-		config.Config.RabbitMQ.Exchanges.Currency,
-		config.Config.RabbitMQ.Exchanges.User,
+		config.Config.RabbitMQ.Exchanges.PriceUpdates,
+		config.Config.RabbitMQ.Exchanges.TradeEvents,
 		config.Config.RabbitMQ.Exchanges.Notifications,
 	}
 	rabbitMQService, err := rabbitmq.NewRabbitMQService(exchanges...)
@@ -189,12 +201,15 @@ func initializeServices() (*models.InfraServices, func(), error) {
 }
 
 func initializeHandlers(services *models.InfraServices) *InfraHandlers {
+	tb := auth.NewTokenBlacklist(services.Redis.Client)
 	return &InfraHandlers{
-		Socket: socket.NewWebSocketHandler(services),
-		System: system.NewHandler(services),
-		Admin:  admin.NewHandler(services),
-		Public: public.NewHandler(services),
-		User:   user.NewHandler(services),
+		Socket:         socket.NewWebSocketHandler(services),
+		System:         system.NewHandler(services),
+		Admin:          admin.NewHandler(services),
+		Public:         public.NewHandler(services),
+		User:           user.NewHandler(services),
+		Redis:          services.Redis,
+		TokenBlacklist: tb,
 	}
 }
 
@@ -205,8 +220,15 @@ func initializeCache(ih *InfraHandlers) error {
 }
 
 func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
+	rl := middleware.NewRateLimiter(ih.Redis)
+
+	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.CORSMiddleware())
+	r.Use(rl.RESTRateLimit())
+
 	socketGroup := r.Group("/ws")
 	{
+		socketGroup.Use(rl.WSRateLimit())
 		socketGroup.GET("/", ih.Socket.ServeWSGin)
 	}
 
@@ -217,16 +239,21 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 	}
 
 	publicGroup := r.Group("/public")
+	publicGroup.Use(rl.AuthRateLimit("login"))
 	{
 		publicGroup.GET("/currencies", ih.Public.GetActiveCurrencies)
 		publicGroup.GET("/currencies/:hk", ih.Public.GetCurrencyByHK)
 		publicGroup.POST("/auth", ih.Public.RequestOTP)
 		publicGroup.POST("/auth/:uuid", ih.Public.VerifyOTP)
 		publicGroup.POST("/auth/refresh", ih.Public.RefreshToken)
+		publicGroup.POST("/auth/logout", func(c *gin.Context) {
+			auth.LogoutHandler(c, ih.TokenBlacklist)
+		})
 	}
 
 	adminGroup := r.Group("/admin")
-	adminGroup.Use(auth.JWTAdminVerification)
+	adminGroup.Use(auth.JWTAdminVerification(ih.TokenBlacklist))
+	adminGroup.Use(rl.TradingRateLimit())
 	{
 		adminGroup.POST("/currencies", ih.Admin.CreateCurrency)
 		adminGroup.PUT("/currencies/:hk", ih.Admin.UpdateCurrency)
@@ -234,10 +261,14 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 	}
 
 	userGroup := r.Group("/user")
-	userGroup.Use(auth.JWTUserVerification)
+	userGroup.Use(auth.JWTUserVerification(ih.TokenBlacklist))
+	userGroup.Use(rl.TradingRateLimit())
 	{
 		userGroup.GET("/profile", ih.User.GetActiveCurrencies)
 		userGroup.POST("/update", nil)
+		userGroup.POST("/logout", func(c *gin.Context) {
+			auth.LogoutHandler(c, ih.TokenBlacklist)
+		})
 	}
 }
 
