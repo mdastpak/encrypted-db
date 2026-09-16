@@ -183,6 +183,23 @@ func (r *RabbitMQService) healthCheck() error {
 	return nil
 }
 
+// IsHealthy reports whether the service has an active connection and channel.
+// It is safe for concurrent use and does not perform any network I/O.
+func (r *RabbitMQService) IsHealthy() bool {
+	if r.closed.Load() {
+		return false
+	}
+
+	r.connMu.RLock()
+	conn := r.conn
+	r.connMu.RUnlock()
+	if conn == nil || conn.IsClosed() {
+		return false
+	}
+
+	return r.healthCheck() == nil
+}
+
 func (r *RabbitMQService) reconnect() {
 	backoff := time.Second
 	maxBackoff := 30 * time.Second

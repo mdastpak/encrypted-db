@@ -11,12 +11,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// UpdateProfile is a placeholder endpoint for future profile-update functionality.
+// It returns 501 Not Implemented rather than leaving the route unregistered or
+// wired to a nil handler (which would panic the server on first request).
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	helpers.SendResponse(c, http.StatusNotImplemented, "Profile update is not implemented yet.", nil)
+}
+
 func (h *UserHandler) GetActiveCurrencies(c *gin.Context) {
 	// Define the pattern to match all active currency keys
 	pattern := "base_definitions:currency:*"
 
 	// Use Redis SCAN command to retrieve all matching keys
-	var currencies []models.Currency
+	currencies := make([]models.Currency, 0)
 	iter := h.RedisClient.Client.Scan(context.Background(), 0, pattern, 0).Iterator()
 	for iter.Next(context.Background()) {
 		// Get the value of each currency key from Redis

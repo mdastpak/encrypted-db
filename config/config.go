@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+//go:embed config.example.yaml
 var configEmbed embed.FS
 
 var Config Configuration
@@ -36,13 +37,13 @@ func MigrationsPath() string {
 
 type Configuration struct {
 	Server struct {
-		IP              string `yaml:"ip"`
-		Port            string `yaml:"port"`
-		ReadTimeout     int    `yaml:"read_timeout_seconds"`
-		WriteTimeout    int    `yaml:"write_timeout_seconds"`
-		IdleTimeout     int    `yaml:"idle_timeout_seconds"`
-		Mode            string `yaml:"mode"`
-		TLS             struct {
+		IP           string `yaml:"ip"`
+		Port         string `yaml:"port"`
+		ReadTimeout  int    `yaml:"read_timeout_seconds"`
+		WriteTimeout int    `yaml:"write_timeout_seconds"`
+		IdleTimeout  int    `yaml:"idle_timeout_seconds"`
+		Mode         string `yaml:"mode"`
+		TLS          struct {
 			Enabled  bool   `yaml:"enabled"`
 			CertFile string `yaml:"cert_file"`
 			KeyFile  string `yaml:"key_file"`
@@ -50,25 +51,29 @@ type Configuration struct {
 	} `yaml:"server"`
 
 	Postgres struct {
-		Host            string `yaml:"host"`
-		Port            string `yaml:"port"`
-		User            string `yaml:"user"`
-		Password        string `yaml:"password"`
-		DBName          string `yaml:"dbname"`
-		SSLMode         string `yaml:"sslmode"`
-		MaxOpenConns    int    `yaml:"max_open_conns"`
-		MaxIdleConns    int    `yaml:"max_idle_conns"`
-		ConnMaxLifetime int    `yaml:"conn_max_lifetime_minutes"`
-		ConnMaxIdleTime int    `yaml:"conn_max_idle_time_minutes"`
+		Host                string `yaml:"host"`
+		Port                string `yaml:"port"`
+		User                string `yaml:"user"`
+		Password            string `yaml:"password"`
+		DBName              string `yaml:"dbname"`
+		SSLMode             string `yaml:"sslmode"`
+		MaxOpenConns        int    `yaml:"max_open_conns"`
+		MaxIdleConns        int    `yaml:"max_idle_conns"`
+		ConnMaxLifetime     int    `yaml:"conn_max_lifetime_minutes"`
+		ConnMaxIdleTime     int    `yaml:"conn_max_idle_time_minutes"`
+		ConnectRetries      int    `yaml:"connect_retries"`
+		ConnectRetryDelayMs int    `yaml:"connect_retry_delay_ms"`
 	} `yaml:"postgres"`
 
 	Redis struct {
-		Host         string `yaml:"host"`
-		Port         string `yaml:"port"`
-		Password     string `yaml:"password"`
-		DB           int    `yaml:"db"`
-		PoolSize     int    `yaml:"pool_size"`
-		MinIdleConns int    `yaml:"min_idle_conns"`
+		Host                string `yaml:"host"`
+		Port                string `yaml:"port"`
+		Password            string `yaml:"password"`
+		DB                  int    `yaml:"db"`
+		PoolSize            int    `yaml:"pool_size"`
+		MinIdleConns        int    `yaml:"min_idle_conns"`
+		ConnectRetries      int    `yaml:"connect_retries"`
+		ConnectRetryDelayMs int    `yaml:"connect_retry_delay_ms"`
 	} `yaml:"redis"`
 
 	RabbitMQ struct {
@@ -121,8 +126,8 @@ type Configuration struct {
 	} `yaml:"websocket"`
 
 	Exchange struct {
-		Name        string `yaml:"name"`
-		Timezone    string `yaml:"timezone"`
+		Name              string `yaml:"name"`
+		Timezone          string `yaml:"timezone"`
 		MaintenanceWindow struct {
 			Enabled  bool   `yaml:"enabled"`
 			Start    string `yaml:"start"`
@@ -137,22 +142,22 @@ type Configuration struct {
 	} `yaml:"assets"`
 
 	Markets struct {
-		DefaultMakerFeeBPS  int  `yaml:"default_maker_fee_bps"`
-		DefaultTakerFeeBPS  int  `yaml:"default_taker_fee_bps"`
-		EnableMarketOrders  bool `yaml:"enable_market_orders"`
-		EnableStopOrders    bool `yaml:"enable_stop_orders"`
+		DefaultMakerFeeBPS int  `yaml:"default_maker_fee_bps"`
+		DefaultTakerFeeBPS int  `yaml:"default_taker_fee_bps"`
+		EnableMarketOrders bool `yaml:"enable_market_orders"`
+		EnableStopOrders   bool `yaml:"enable_stop_orders"`
 	} `yaml:"markets"`
 
 	PriceAggregator struct {
-		Enabled              bool                      `yaml:"enabled"`
-		Providers            []PriceProviderConfig     `yaml:"providers"`
-		AggregationInterval  int                       `yaml:"aggregation_interval_ms"`
-		VWAPWindows          []int                     `yaml:"vwap_windows_seconds"`
-		OutlierThreshold     float64                   `yaml:"outlier_threshold_mad"`
-		MinProviders         int                       `yaml:"min_providers"`
-		StaleThreshold       int                       `yaml:"stale_threshold_ms"`
-		PublishToRedis       bool                      `yaml:"publish_to_redis"`
-		PublishToRabbitMQ    bool                      `yaml:"publish_to_rabbitmq"`
+		Enabled             bool                  `yaml:"enabled"`
+		Providers           []PriceProviderConfig `yaml:"providers"`
+		AggregationInterval int                   `yaml:"aggregation_interval_ms"`
+		VWAPWindows         []int                 `yaml:"vwap_windows_seconds"`
+		OutlierThreshold    float64               `yaml:"outlier_threshold_mad"`
+		MinProviders        int                   `yaml:"min_providers"`
+		StaleThreshold      int                   `yaml:"stale_threshold_ms"`
+		PublishToRedis      bool                  `yaml:"publish_to_redis"`
+		PublishToRabbitMQ   bool                  `yaml:"publish_to_rabbitmq"`
 	} `yaml:"price_aggregator"`
 
 	Custody struct {
@@ -176,18 +181,18 @@ type Configuration struct {
 			RulesPath string `yaml:"rules_path"`
 		} `yaml:"aml"`
 		KYC struct {
-			Providers           []KYCProviderConfig `yaml:"providers"`
-			DefaultTier         string              `yaml:"default_tier"`
-			AutoApproveLowRisk  bool                `yaml:"auto_approve_low_risk"`
+			Providers          []KYCProviderConfig `yaml:"providers"`
+			DefaultTier        string              `yaml:"default_tier"`
+			AutoApproveLowRisk bool                `yaml:"auto_approve_low_risk"`
 		} `yaml:"kyc"`
 	} `yaml:"compliance"`
 
 	Observability struct {
 		Logging struct {
-			Level     string `yaml:"level"`
-			Format    string `yaml:"format"`
-			Output    string `yaml:"output"`
-			FilePath  string `yaml:"file_path"`
+			Level    string `yaml:"level"`
+			Format   string `yaml:"format"`
+			Output   string `yaml:"output"`
+			FilePath string `yaml:"file_path"`
 		} `yaml:"logging"`
 		Metrics struct {
 			Enabled bool   `yaml:"enabled"`
@@ -224,63 +229,63 @@ type Configuration struct {
 
 // PriceProviderConfig holds configuration for a price data provider
 type PriceProviderConfig struct {
-	Name            string   `yaml:"name"`
-	Enabled         bool     `yaml:"enabled"`
-	Type            string   `yaml:"type"`
-	WSEndpoint      string   `yaml:"ws_endpoint"`
-	RESTEndpoint    string   `yaml:"rest_endpoint"`
-	APIKey          string   `yaml:"api_key"`
-	APISecret       string   `yaml:"api_secret"`
-	Passphrase      string   `yaml:"passphrase"`
-	Symbols         []string `yaml:"symbols"`
-	RateLimit       int      `yaml:"rate_limit"`
-	Timeout         int      `yaml:"timeout_seconds"`
-	ReconnectDelay  int      `yaml:"reconnect_delay_seconds"`
+	Name           string   `yaml:"name"`
+	Enabled        bool     `yaml:"enabled"`
+	Type           string   `yaml:"type"`
+	WSEndpoint     string   `yaml:"ws_endpoint"`
+	RESTEndpoint   string   `yaml:"rest_endpoint"`
+	APIKey         string   `yaml:"api_key"`
+	APISecret      string   `yaml:"api_secret"`
+	Passphrase     string   `yaml:"passphrase"`
+	Symbols        []string `yaml:"symbols"`
+	RateLimit      int      `yaml:"rate_limit"`
+	Timeout        int      `yaml:"timeout_seconds"`
+	ReconnectDelay int      `yaml:"reconnect_delay_seconds"`
 }
 
 // CustodyProviderConfig holds configuration for a custody provider
 type CustodyProviderConfig struct {
-	ProviderType        string   `yaml:"provider_type"`
-	AssetIDs            []string `yaml:"asset_ids"`
-	Network             string   `yaml:"network"`
-	Enabled             bool     `yaml:"enabled"`
-	RPCEndpoints        []string `yaml:"rpc_endpoints"`
-	WSEndpoints         []string `yaml:"ws_endpoints"`
-	ExplorerAPI         string   `yaml:"explorer_api"`
-	ExplorerWS          string   `yaml:"explorer_ws"`
-	APIKey              string   `yaml:"api_key"`
-	APISecret           string   `yaml:"api_secret"`
-	JWTToken            string   `yaml:"jwt_token"`
-	ChainID             string   `yaml:"chain_id"`
-	ContractAddress     string   `yaml:"contract_address"`
-	Decimals            int      `yaml:"decimals"`
-	ConfirmationsRequired int    `yaml:"confirmations_required"`
-	MinDepositAmount    string   `yaml:"min_deposit_amount"`
-	MinWithdrawalAmount string   `yaml:"min_withdrawal_amount"`
-	MaxWithdrawalAmount string   `yaml:"max_withdrawal_amount"`
-	DefaultFeeLevel     string   `yaml:"default_fee_level"`
-	FeeAssetID          string   `yaml:"fee_asset_id"`
-	HotWalletAddress    string   `yaml:"hot_wallet_address"`
-	ColdWalletAddress   string   `yaml:"cold_wallet_address"`
-	BlockPollInterval   int      `yaml:"block_poll_interval_seconds"`
-	ReorgDepth          int      `yaml:"reorg_depth"`
-	SanctionsScreening  bool     `yaml:"sanctions_screening"`
+	ProviderType          string   `yaml:"provider_type"`
+	AssetIDs              []string `yaml:"asset_ids"`
+	Network               string   `yaml:"network"`
+	Enabled               bool     `yaml:"enabled"`
+	RPCEndpoints          []string `yaml:"rpc_endpoints"`
+	WSEndpoints           []string `yaml:"ws_endpoints"`
+	ExplorerAPI           string   `yaml:"explorer_api"`
+	ExplorerWS            string   `yaml:"explorer_ws"`
+	APIKey                string   `yaml:"api_key"`
+	APISecret             string   `yaml:"api_secret"`
+	JWTToken              string   `yaml:"jwt_token"`
+	ChainID               string   `yaml:"chain_id"`
+	ContractAddress       string   `yaml:"contract_address"`
+	Decimals              int      `yaml:"decimals"`
+	ConfirmationsRequired int      `yaml:"confirmations_required"`
+	MinDepositAmount      string   `yaml:"min_deposit_amount"`
+	MinWithdrawalAmount   string   `yaml:"min_withdrawal_amount"`
+	MaxWithdrawalAmount   string   `yaml:"max_withdrawal_amount"`
+	DefaultFeeLevel       string   `yaml:"default_fee_level"`
+	FeeAssetID            string   `yaml:"fee_asset_id"`
+	HotWalletAddress      string   `yaml:"hot_wallet_address"`
+	ColdWalletAddress     string   `yaml:"cold_wallet_address"`
+	BlockPollInterval     int      `yaml:"block_poll_interval_seconds"`
+	ReorgDepth            int      `yaml:"reorg_depth"`
+	SanctionsScreening    bool     `yaml:"sanctions_screening"`
 }
 
 // FiatProviderConfig holds configuration for a fiat provider
 type FiatProviderConfig struct {
-	Name             string   `yaml:"name"`
-	Enabled          bool     `yaml:"enabled"`
-	Type             string   `yaml:"type"`
-	Endpoint         string   `yaml:"endpoint"`
-	APIKey           string   `yaml:"api_key"`
-	APISecret        string   `yaml:"api_secret"`
-	CertPath         string   `yaml:"cert_path"`
-	KeyPath          string   `yaml:"key_path"`
-	CAPath           string   `yaml:"ca_path"`
-	SupportedAssets  []string `yaml:"supported_assets"`
-	WebhookSecret    string   `yaml:"webhook_secret"`
-	Timeout          int      `yaml:"timeout_seconds"`
+	Name            string   `yaml:"name"`
+	Enabled         bool     `yaml:"enabled"`
+	Type            string   `yaml:"type"`
+	Endpoint        string   `yaml:"endpoint"`
+	APIKey          string   `yaml:"api_key"`
+	APISecret       string   `yaml:"api_secret"`
+	CertPath        string   `yaml:"cert_path"`
+	KeyPath         string   `yaml:"key_path"`
+	CAPath          string   `yaml:"ca_path"`
+	SupportedAssets []string `yaml:"supported_assets"`
+	WebhookSecret   string   `yaml:"webhook_secret"`
+	Timeout         int      `yaml:"timeout_seconds"`
 }
 
 // SanctionsProviderConfig holds configuration for a sanctions screening provider
@@ -296,13 +301,13 @@ type SanctionsProviderConfig struct {
 
 // KYCProviderConfig holds configuration for a KYC provider
 type KYCProviderConfig struct {
-	Name           string `yaml:"name"`
-	Enabled        bool   `yaml:"enabled"`
-	APIKey         string `yaml:"api_key"`
-	APISecret      string `yaml:"api_secret"`
-	Endpoint       string `yaml:"endpoint"`
-	WebhookSecret  string `yaml:"webhook_secret"`
-	Timeout        int    `yaml:"timeout_seconds"`
+	Name          string `yaml:"name"`
+	Enabled       bool   `yaml:"enabled"`
+	APIKey        string `yaml:"api_key"`
+	APISecret     string `yaml:"api_secret"`
+	Endpoint      string `yaml:"endpoint"`
+	WebhookSecret string `yaml:"webhook_secret"`
+	Timeout       int    `yaml:"timeout_seconds"`
 }
 
 func LoadConfig() {
@@ -360,12 +365,24 @@ func setDefaults() {
 	if Config.Postgres.SSLMode == "" {
 		Config.Postgres.SSLMode = "disable"
 	}
+	if Config.Postgres.ConnectRetries == 0 {
+		Config.Postgres.ConnectRetries = 3
+	}
+	if Config.Postgres.ConnectRetryDelayMs == 0 {
+		Config.Postgres.ConnectRetryDelayMs = 500
+	}
 
 	if Config.Redis.PoolSize == 0 {
 		Config.Redis.PoolSize = 10
 	}
 	if Config.Redis.MinIdleConns == 0 {
 		Config.Redis.MinIdleConns = 2
+	}
+	if Config.Redis.ConnectRetries == 0 {
+		Config.Redis.ConnectRetries = 3
+	}
+	if Config.Redis.ConnectRetryDelayMs == 0 {
+		Config.Redis.ConnectRetryDelayMs = 500
 	}
 
 	if Config.WebSocket.PingInterval == 0 {

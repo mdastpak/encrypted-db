@@ -20,3 +20,4 @@ DROP TYPE IF EXISTS screen_type;
 DROP TYPE IF EXISTS aml_rule_type;
 DROP TYPE IF EXISTS aml_action;
 DROP TYPE IF EXISTS aml_alert_status;
+DROP TYPE IF EXISTS sanction_action;

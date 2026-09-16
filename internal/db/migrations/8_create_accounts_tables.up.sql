@@ -1,7 +1,7 @@
 -- Migration: 8_create_accounts_tables.up.sql
 -- Description: Create users, sub_accounts, api_keys, sessions tables
 
-CREATE TYPE user_status AS ENUM ('ACTIVE', 'INACTIVE', 'SUSPENDED', 'BANNED', 'PENDING_VERIFICATION');
+CREATE TYPE account_status_type AS ENUM ('ACTIVE', 'INACTIVE', 'SUSPENDED', 'BANNED', 'PENDING_VERIFICATION');
 CREATE TYPE kyc_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'EXPIRED', 'UNDER_REVIEW');
 CREATE TYPE kyc_tier AS ENUM ('NONE', 'BASIC', 'STANDARD', 'ENHANCED', 'INSTITUTIONAL');
 CREATE TYPE sub_account_status AS ENUM ('ACTIVE', 'INACTIVE', 'FROZEN');
@@ -11,6 +11,7 @@ CREATE TYPE auth_method AS ENUM ('PASSWORD', 'API_KEY', 'OAUTH', 'MAGIC_LINK', '
 CREATE TYPE session_status AS ENUM ('ACTIVE', 'REVOKED', 'EXPIRED');
 
 -- Users table (extends existing)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) UNIQUE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN NOT NULL DEFAULT FALSE;
@@ -20,11 +21,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(100);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS status user_status NOT NULL DEFAULT 'PENDING_VERIFICATION';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status account_status_type NOT NULL DEFAULT 'PENDING_VERIFICATION';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip INET;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20) UNIQUE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by UUID REFERENCES users(id);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by UUID REFERENCES users(hk);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_status kyc_status NOT NULL DEFAULT 'PENDING';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS kyc_tier kyc_tier NOT NULL DEFAULT 'NONE';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS risk_score SMALLINT NOT NULL DEFAULT 0;
@@ -37,7 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_users_kyc_status ON users(kyc_status);
 -- Sub-accounts
 CREATE TABLE sub_accounts (
     id                          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id                     UUID NOT NULL REFERENCES users(hk) ON DELETE CASCADE,
     label                       VARCHAR(100) NOT NULL,
     description                 TEXT,
     permissions                 JSONB NOT NULL DEFAULT '[]',
@@ -56,6 +57,17 @@ CREATE INDEX idx_sub_accounts_deleted ON sub_accounts(deleted_at) WHERE deleted_
 
 CREATE TRIGGER update_sub_accounts_updated_at BEFORE UPDATE ON sub_accounts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Deferred foreign keys: these columns were created without a FK in earlier
+-- migrations (5 and 7) because sub_accounts did not exist yet.
+ALTER TABLE orders ADD CONSTRAINT fk_orders_sub_account
+    FOREIGN KEY (sub_account_id) REFERENCES sub_accounts(id);
+ALTER TABLE balances ADD CONSTRAINT fk_balances_sub_account
+    FOREIGN KEY (sub_account_id) REFERENCES sub_accounts(id);
+ALTER TABLE balance_snapshots ADD CONSTRAINT fk_balance_snapshots_sub_account
+    FOREIGN KEY (sub_account_id) REFERENCES sub_accounts(id);
+ALTER TABLE balance_changes ADD CONSTRAINT fk_balance_changes_sub_account
+    FOREIGN KEY (sub_account_id) REFERENCES sub_accounts(id);
 
 -- API Keys
 CREATE TABLE api_keys (
@@ -89,7 +101,7 @@ CREATE TRIGGER update_api_keys_updated_at BEFORE UPDATE ON api_keys
 -- Sessions
 CREATE TABLE sessions (
     id                          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id                     UUID NOT NULL REFERENCES users(hk) ON DELETE CASCADE,
     sub_account_id              UUID REFERENCES sub_accounts(id) ON DELETE SET NULL,
     auth_method                 VARCHAR(20) NOT NULL,
     access_token_hash           TEXT NOT NULL,
@@ -108,9 +120,3 @@ CREATE INDEX idx_sessions_sub_account_id ON sessions(sub_account_id);
 CREATE INDEX idx_sessions_refresh_token ON sessions(refresh_token_hash);
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 CREATE INDEX idx_sessions_status ON sessions(status);
-
--- Trigger for updated_at on sub_accounts, api_keys
-CREATE TRIGGER update_sub_accounts_updated_at BEFORE UPDATE ON sub_accounts
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_api_keys_updated_at BEFORE UPDATE ON api_keys
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

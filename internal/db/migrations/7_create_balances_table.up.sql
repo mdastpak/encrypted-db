@@ -3,8 +3,8 @@
 
 CREATE TABLE balances (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id             UUID NOT NULL REFERENCES users(id),
-    sub_account_id      UUID REFERENCES sub_accounts(id),
+    user_id             UUID NOT NULL REFERENCES users(hk),
+    sub_account_id      UUID,
     asset_id            UUID NOT NULL REFERENCES assets(id),
     
     available           NUMERIC(36, 18) NOT NULL DEFAULT 0,
@@ -33,8 +33,8 @@ CREATE TRIGGER update_balances_updated_at BEFORE UPDATE ON balances
 CREATE TABLE balance_snapshots (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     balance_id          UUID NOT NULL REFERENCES balances(id),
-    user_id             UUID NOT NULL REFERENCES users(id),
-    sub_account_id      UUID REFERENCES sub_accounts(id),
+    user_id             UUID NOT NULL REFERENCES users(hk),
+    sub_account_id      UUID,
     asset_id            UUID NOT NULL REFERENCES assets(id),
     
     available           NUMERIC(36, 18) NOT NULL,
@@ -54,8 +54,8 @@ CREATE INDEX idx_balance_snapshots_timestamp ON balance_snapshots(timestamp);
 CREATE TABLE balance_changes (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     balance_id          UUID NOT NULL REFERENCES balances(id),
-    user_id             UUID NOT NULL REFERENCES users(id),
-    sub_account_id      UUID REFERENCES sub_accounts(id),
+    user_id             UUID NOT NULL REFERENCES users(hk),
+    sub_account_id      UUID,
     asset_id            UUID NOT NULL REFERENCES assets(id),
     
     change_type         VARCHAR(50) NOT NULL,
