@@ -2,6 +2,7 @@ package public
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -263,9 +264,12 @@ func validateUUID(s string) bool {
 func GenerateOTP(length int) string {
 	const digits = "0123456789"
 	b := make([]byte, length)
+	randomBytes := make([]byte, length)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return ""
+	}
 	for i := range b {
-		b[i] = digits[time.Now().UnixNano()%10]
-		time.Sleep(1 * time.Nanosecond)
+		b[i] = digits[int(randomBytes[i])%len(digits)]
 	}
 	return string(b)
 }
@@ -320,7 +324,7 @@ func (h *PublicHandler) GetActiveCurrencies(c *gin.Context) {
 
 	pattern := "base_definitions:currency:*"
 
-	var currencies []models.Currency
+	currencies := make([]models.Currency, 0)
 	iter := h.RedisClient.Client.Scan(ctx, 0, pattern, 100).Iterator()
 	for iter.Next(ctx) {
 		data, err := h.RedisClient.Client.Get(ctx, iter.Val()).Result()

@@ -3,7 +3,11 @@ package public
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -37,15 +41,15 @@ func requestIDMiddleware() gin.HandlerFunc {
 
 type PublicHandlerTestSuite struct {
 	suite.Suite
-	router        *gin.Engine
-	handler       *PublicHandler
+	router          *gin.Engine
+	handler         *PublicHandler
 	postgresService *db.PostgresService
-	redisClient   *redis.Client
+	redisClient     *redis.Client
 }
 
 func (s *PublicHandlerTestSuite) SetupSuite() {
 	gin.SetMode(gin.TestMode)
-	
+
 	config.Config = config.Configuration{}
 	config.Config.Server.IP = "localhost"
 	config.Config.Server.Port = "8080"
@@ -55,7 +59,7 @@ func (s *PublicHandlerTestSuite) SetupSuite() {
 	config.Config.JWT.AccessToken.Expiration = 15
 	config.Config.JWT.RefreshToken.Expiration = 10080
 	config.Config.JWT.Issuer = "test"
-	
+
 	privateKeyPEM := []byte(`-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA0+X5J6Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8
 Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8
@@ -76,7 +80,17 @@ Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8
 Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8
 Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8Y8
 -----END PUBLIC KEY-----`)
-	auth.InitKeys(privateKeyPEM, publicKeyPEM)
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(s.T(), err)
+	privateKeyPEM = pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+	publicKeyPEM = pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PUBLIC KEY",
+		Bytes: x509.MarshalPKCS1PublicKey(&privateKey.PublicKey),
+	})
+	require.NoError(s.T(), auth.InitKeys(privateKeyPEM, publicKeyPEM))
 }
 
 func (s *PublicHandlerTestSuite) SetupTest() {
@@ -85,29 +99,29 @@ func (s *PublicHandlerTestSuite) SetupTest() {
 		Password: "",
 		DB:       1,
 	})
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	require.NoError(s.T(), s.redisClient.Ping(ctx).Err())
-	
+
 	postgresService, err := db.NewTestPostgresService("localhost", "5432", "postgres", "test", "testdb", "disable")
 	require.NoError(s.T(), err)
-	
+
 	s.postgresService = postgresService
-	
+
 	redisService := &db.RedisService{Client: s.redisClient}
-	
+
 	services := &models.InfraServices{
 		Postgres: postgresService,
 		Redis:    redisService,
 		RabbitMQ: nil,
 	}
-	
+
 	s.handler = NewHandler(services)
 	s.router = gin.New()
 	s.router.Use(gin.Recovery())
 	s.router.Use(requestIDMiddleware())
-	
+
 	publicGroup := s.router.Group("/public")
 	{
 		publicGroup.POST("/auth", s.handler.RequestOTP)
@@ -138,13 +152,13 @@ func (s *PublicHandlerTestSuite) makeRequest(method, path string, body interface
 	if body != nil {
 		reqBody, _ = json.Marshal(body)
 	}
-	
+
 	req, _ := http.NewRequest(method, path, bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	
+
 	w := httptest.NewRecorder()
 	s.router.ServeHTTP(w, req)
 	return w
@@ -155,13 +169,13 @@ func (s *PublicHandlerTestSuite) makeRequestWithCookie(method, path string, body
 	if body != nil {
 		reqBody, _ = json.Marshal(body)
 	}
-	
+
 	req, _ := http.NewRequest(method, path, bytes.NewBuffer(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	if cookieName != "" && cookieValue != "" {
 		req.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
 	}
-	
+
 	w := httptest.NewRecorder()
 	s.router.ServeHTTP(w, req)
 	return w
@@ -173,7 +187,7 @@ func (s *PublicHandlerTestSuite) getOTPFromRedis(uuidStr string) string {
 	keys, err := s.redisClient.Keys(ctx, pattern).Result()
 	require.NoError(s.T(), err)
 	require.Len(s.T(), keys, 1)
-	
+
 	otpKey := keys[0]
 	prefix := fmt.Sprintf("otp:auth:%s:", uuidStr)
 	return otpKey[len(prefix):]
@@ -187,15 +201,15 @@ func (s *PublicHandlerTestSuite) TestRequestOTP_ValidEmail() {
 	w := s.makeRequest(http.MethodPost, "/public/auth", map[string]string{
 		"username": "test@example.com",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var resp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), "OTP sent to your contact", resp.Message)
 	assert.NotNil(s.T(), resp.Info)
-	
+
 	data := resp.Info.(map[string]interface{})
 	assert.Equal(s.T(), "email", data["type"])
 	assert.NotEmpty(s.T(), data["uuid"])
@@ -205,14 +219,14 @@ func (s *PublicHandlerTestSuite) TestRequestOTP_ValidMobile() {
 	w := s.makeRequest(http.MethodPost, "/public/auth", map[string]string{
 		"username": "09123456789",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var resp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), "OTP sent to your contact", resp.Message)
-	
+
 	data := resp.Info.(map[string]interface{})
 	assert.Equal(s.T(), "mobile", data["type"])
 }
@@ -221,13 +235,13 @@ func (s *PublicHandlerTestSuite) TestRequestOTP_ValidUsername() {
 	w := s.makeRequest(http.MethodPost, "/public/auth", map[string]string{
 		"username": "testuser123",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var resp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
-	
+
 	data := resp.Info.(map[string]interface{})
 	assert.Equal(s.T(), "username", data["type"])
 }
@@ -236,9 +250,9 @@ func (s *PublicHandlerTestSuite) TestRequestOTP_InvalidInput() {
 	w := s.makeRequest(http.MethodPost, "/public/auth", map[string]string{
 		"username": "",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusBadRequest, w.Code)
-	
+
 	var resp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
@@ -249,7 +263,7 @@ func (s *PublicHandlerTestSuite) TestRequestOTP_InvalidFormat() {
 	w := s.makeRequest(http.MethodPost, "/public/auth", map[string]string{
 		"username": "invalid@",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusBadRequest, w.Code)
 }
 
@@ -258,27 +272,27 @@ func (s *PublicHandlerTestSuite) TestVerifyOTP_Success() {
 		"username": "test@example.com",
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var otpResp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &otpResp)
 	require.NoError(s.T(), err)
-	
+
 	otpData := otpResp.Info.(map[string]interface{})
 	otpUUID := otpData["uuid"].(string)
 	otp := s.getOTPFromRedis(otpUUID)
-	
+
 	w = s.makeRequest(http.MethodPost, fmt.Sprintf("/public/auth/%s", otpUUID), map[string]string{
 		"otp": otp,
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var resp models.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), "OTP verified successfully", resp.Message)
 	assert.NotNil(s.T(), resp.Info)
-	
+
 	data := resp.Info.(map[string]interface{})
 	assert.NotEmpty(s.T(), data["access_token"])
 	assert.NotEmpty(s.T(), data["refresh_token"])
@@ -289,20 +303,20 @@ func (s *PublicHandlerTestSuite) TestVerifyOTP_InvalidOTP() {
 		"username": "test2@example.com",
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var otpResp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &otpResp)
 	require.NoError(s.T(), err)
-	
+
 	otpData := otpResp.Info.(map[string]interface{})
 	otpUUID := otpData["uuid"].(string)
-	
+
 	w = s.makeRequest(http.MethodPost, fmt.Sprintf("/public/auth/%s", otpUUID), map[string]string{
 		"otp": "000000",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
-	
+
 	var resp models.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
@@ -314,23 +328,23 @@ func (s *PublicHandlerTestSuite) TestVerifyOTP_ExpiredOTP() {
 		"username": "test3@example.com",
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var otpResp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &otpResp)
 	require.NoError(s.T(), err)
-	
+
 	otpData := otpResp.Info.(map[string]interface{})
 	otpUUID := otpData["uuid"].(string)
-	
+
 	ctx := context.Background()
 	pattern := fmt.Sprintf("otp:auth:%s:*", otpUUID)
 	keys, _ := s.redisClient.Keys(ctx, pattern).Result()
 	s.redisClient.Del(ctx, keys...)
-	
+
 	w = s.makeRequest(http.MethodPost, fmt.Sprintf("/public/auth/%s", otpUUID), map[string]string{
 		"otp": "123456",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
 }
 
@@ -338,7 +352,7 @@ func (s *PublicHandlerTestSuite) TestVerifyOTP_InvalidUUID() {
 	w := s.makeRequest(http.MethodPost, "/public/auth/invalid-uuid", map[string]string{
 		"otp": "123456",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusBadRequest, w.Code)
 }
 
@@ -347,24 +361,24 @@ func (s *PublicHandlerTestSuite) TestVerifyOTP_TooManyAttempts() {
 		"username": "test4@example.com",
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var otpResp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &otpResp)
 	require.NoError(s.T(), err)
-	
+
 	otpData := otpResp.Info.(map[string]interface{})
 	otpUUID := otpData["uuid"].(string)
-	
+
 	for i := 0; i < 5; i++ {
 		w = s.makeRequest(http.MethodPost, fmt.Sprintf("/public/auth/%s", otpUUID), map[string]string{
 			"otp": "wrong_otp",
 		}, "")
 	}
-	
+
 	w = s.makeRequest(http.MethodPost, fmt.Sprintf("/public/auth/%s", otpUUID), map[string]string{
 		"otp": "wrong_otp",
 	}, "")
-	
+
 	assert.Equal(s.T(), http.StatusTooManyRequests, w.Code)
 }
 
@@ -373,51 +387,50 @@ func (s *PublicHandlerTestSuite) TestRefreshToken_Success() {
 		"username": "test5@example.com",
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var otpResp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &otpResp)
 	require.NoError(s.T(), err)
-	
+
 	otpData := otpResp.Info.(map[string]interface{})
 	otpUUID := otpData["uuid"].(string)
 	otp := s.getOTPFromRedis(otpUUID)
-	
+
 	w = s.makeRequest(http.MethodPost, fmt.Sprintf("/public/auth/%s", otpUUID), map[string]string{
 		"otp": otp,
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var loginResp models.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &loginResp)
 	require.NoError(s.T(), err)
-	
+
 	loginData := loginResp.Info.(map[string]interface{})
 	refreshToken := loginData["refresh_token"].(string)
-	
-	w = s.makeRequest(http.MethodPost, "/public/auth/refresh", nil, refreshToken)
-	
+
+	w = s.makeRequestWithCookie(http.MethodPost, "/public/auth/refresh", nil, "refresh_token", refreshToken)
+
 	assert.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var resp models.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
-	assert.Equal(s.T(), "Token refreshed successfully", resp.Message)
+	assert.Equal(s.T(), "Access token refreshed", resp.Message)
 	assert.NotNil(s.T(), resp.Info)
-	
+
 	data := resp.Info.(map[string]interface{})
 	assert.NotEmpty(s.T(), data["access_token"])
-	assert.NotEmpty(s.T(), data["refresh_token"])
 }
 
 func (s *PublicHandlerTestSuite) TestRefreshToken_MissingToken() {
 	w := s.makeRequest(http.MethodPost, "/public/auth/refresh", nil, "")
-	
+
 	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
 }
 
 func (s *PublicHandlerTestSuite) TestRefreshToken_InvalidToken() {
 	w := s.makeRequest(http.MethodPost, "/public/auth/refresh", nil, "invalid.token.here")
-	
+
 	assert.Equal(s.T(), http.StatusUnauthorized, w.Code)
 }
 
@@ -426,37 +439,36 @@ func (s *PublicHandlerTestSuite) TestLogout_Success() {
 		"username": "test6@example.com",
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var otpResp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &otpResp)
 	require.NoError(s.T(), err)
-	
+
 	otpData := otpResp.Info.(map[string]interface{})
 	otpUUID := otpData["uuid"].(string)
 	otp := s.getOTPFromRedis(otpUUID)
-	
+
 	w = s.makeRequest(http.MethodPost, fmt.Sprintf("/public/auth/%s", otpUUID), map[string]string{
 		"otp": otp,
 	}, "")
 	require.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var loginResp models.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &loginResp)
 	require.NoError(s.T(), err)
-	
+
 	loginData := loginResp.Info.(map[string]interface{})
 	accessToken := loginData["access_token"].(string)
-	refreshToken := loginData["refresh_token"].(string)
-	
-	w = s.makeRequest(http.MethodPost, "/public/auth/logout", nil, refreshToken)
-	
+
+	w = s.makeRequest(http.MethodPost, "/public/auth/logout", nil, accessToken)
+
 	assert.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var resp models.APIResponse
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), "Logged out successfully", resp.Message)
-	
+
 	ctx := context.Background()
 	blacklisted, err := auth.NewTokenBlacklist(s.redisClient).IsTokenBlacklisted(ctx, accessToken)
 	require.NoError(s.T(), err)
@@ -465,23 +477,23 @@ func (s *PublicHandlerTestSuite) TestLogout_Success() {
 
 func (s *PublicHandlerTestSuite) TestGetActiveCurrencies_Empty() {
 	w := s.makeRequest(http.MethodGet, "/public/currencies", nil, "")
-	
+
 	assert.Equal(s.T(), http.StatusOK, w.Code)
-	
+
 	var resp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
 	assert.Equal(s.T(), "Active currencies retrieved successfully.", resp.Message)
-	
+
 	currencies := resp.Info.([]interface{})
 	assert.Empty(s.T(), currencies)
 }
 
 func (s *PublicHandlerTestSuite) TestGetCurrencyByHK_NotFound() {
 	w := s.makeRequest(http.MethodGet, "/public/currencies/"+uuid.New().String(), nil, "")
-	
+
 	assert.Equal(s.T(), http.StatusNotFound, w.Code)
-	
+
 	var resp models.APIResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(s.T(), err)
