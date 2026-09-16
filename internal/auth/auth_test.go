@@ -376,6 +376,65 @@ func TestLogoutHandler_InvalidToken(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+func TestLogoutHandler_BearerToken(t *testing.T) {
+	setupTestKeys(t)
+	gin.SetMode(gin.TestMode)
+
+	token, err := GenerateAccessToken("user-123", "user")
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	c.Request.Header.Set("Authorization", "Bearer "+token)
+
+	LogoutHandler(c, NewTokenBlacklist((*redis.Client)(nil)))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRefreshTokenHandler(t *testing.T) {
+	setupTestKeys(t)
+	gin.SetMode(gin.TestMode)
+
+	t.Run("missing cookie", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
+
+		RefreshTokenHandler(c)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+
+	t.Run("invalid cookie", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
+		c.Request.AddCookie(&http.Cookie{Name: "refresh_token", Value: "invalid"})
+
+		RefreshTokenHandler(c)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+
+	t.Run("valid cookie", func(t *testing.T) {
+		refreshToken, err := GenerateRefreshToken("user-123", "user")
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/auth/refresh", nil)
+		c.Request.AddCookie(&http.Cookie{Name: "refresh_token", Value: refreshToken})
+
+		RefreshTokenHandler(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Access token refreshed")
+		assert.Contains(t, w.Body.String(), "access_token")
+	})
+}
+
 func TestSetRefreshTokenCookie(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
