@@ -2,6 +2,7 @@ package asset
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"encrypted-db/internal/domain/shared"
@@ -101,5 +102,66 @@ func (p *AssetPair) Symbol() string {
 
 // IsValid checks if the pair is valid for trading
 func (p *AssetPair) IsValid() bool {
-	return p.BaseAssetID != shared.UUID{} && p.QuoteAssetID != shared.UUID{} && p.BaseAssetID != p.QuoteAssetID
+	return !p.BaseAssetID.IsZero() && !p.QuoteAssetID.IsZero() && p.BaseAssetID != p.QuoteAssetID
 }
+
+// IsValid checks if asset has required fields
+func (a *Asset) IsValid() bool {
+	return a.ID != shared.UUID{} && a.Symbol != "" && a.Name != "" && a.Decimals >= 0
+}
+
+// IsCrypto returns true if asset is a cryptocurrency (coin or token)
+func (a *Asset) IsCrypto() bool {
+	return a.Type == shared.AssetTypeCoin || a.Type == shared.AssetTypeToken || a.Type == shared.AssetTypeWrapped
+}
+
+// IsFiat returns true if asset is fiat currency
+func (a *Asset) IsFiat() bool {
+	return a.Type == shared.AssetTypeFiat
+}
+
+// IsStablecoin returns true if asset is a stablecoin
+func (a *Asset) IsStablecoin() bool {
+	return a.Type == shared.AssetTypeStable
+}
+
+// RoundQuantity rounds quantity to asset's decimal precision
+func (a *Asset) RoundQuantity(qty shared.Decimal) shared.Decimal {
+	if a.Decimals <= 0 {
+		return qty
+	}
+	d := qty.Decimal()
+	// Round to asset's decimal places
+	rounded := d.Round(int32(a.Decimals))
+	return shared.Decimal(rounded)
+}
+
+// ValidateWithdrawal checks if withdrawal amount is valid
+func (a *Asset) ValidateWithdrawal(amount shared.Decimal) error {
+	if !a.WithdrawalEnabled {
+		return ErrWithdrawalDisabled
+	}
+	if amount.IsNegative() || amount.IsZero() {
+		return ErrInvalidWithdrawalAmount
+	}
+	if amount.LessThan(a.MinWithdrawal) {
+		return ErrWithdrawalBelowMinimum
+	}
+	if amount.GreaterThan(a.MaxWithdrawal) {
+		return ErrWithdrawalAboveMaximum
+	}
+	return nil
+}
+
+// AssetConfig validation
+func (c *AssetConfig) IsValid() bool {
+	return c.AssetID != shared.UUID{} && c.ChainID != "" && len(c.RPCEndpoints) > 0 && c.ExplorerAPI != ""
+}
+
+// Asset errors
+var (
+	ErrWithdrawalDisabled        = errors.New("withdrawal is disabled for this asset")
+	ErrInvalidWithdrawalAmount   = errors.New("invalid withdrawal amount")
+	ErrWithdrawalBelowMinimum    = errors.New("withdrawal amount below minimum")
+	ErrWithdrawalAboveMaximum    = errors.New("withdrawal amount exceeds maximum")
+)

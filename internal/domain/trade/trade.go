@@ -70,7 +70,10 @@ func (t *Trade) GetFeeForOrder(orderID shared.UUID) (shared.Decimal, shared.UUID
 	if t.IsMaker(orderID) {
 		return t.MakerFee, t.MakerFeeAssetID
 	}
-	return t.TakerFee, t.TakerFeeAssetID
+	if t.IsTaker(orderID) {
+		return t.TakerFee, t.TakerFeeAssetID
+	}
+	return shared.Decimal{}, shared.UUID{}
 }
 
 // TradeEvent represents a trade execution event for event sourcing
@@ -106,6 +109,10 @@ const (
 	TradeEventExecuted TradeEventType = "TRADE_EXECUTED"
 	TradeEventSettled  TradeEventType = "TRADE_SETTLED"
 )
+
+func (t TradeEventType) String() string {
+	return string(t)
+}
 
 // TradeAggregate represents aggregated trade data for analytics
 type TradeAggregate struct {

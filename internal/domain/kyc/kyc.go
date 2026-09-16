@@ -54,6 +54,37 @@ type KYCProfile struct {
 	UpdatedAt       shared.Timestamp `json:"updated_at" db:"updated_at"`
 }
 
+// IsActive returns true if the KYC profile is approved and not expired
+func (p *KYCProfile) IsActive() bool {
+	if p.Status != shared.KYCStatusApproved {
+		return false
+	}
+	if p.ExpiresAt != nil && p.ExpiresAt.Before(time.Now()) {
+		return false
+	}
+	return true
+}
+
+// IsExpired returns true if the KYC profile has an expiry date that has passed
+func (p *KYCProfile) IsExpired() bool {
+	if p.ExpiresAt == nil {
+		return false
+	}
+	return p.ExpiresAt.Before(time.Now())
+}
+
+// CanUpgrade returns true if the profile can be upgraded to the requested tier
+func (p *KYCProfile) CanUpgrade(targetTier shared.KYCTier) bool {
+	if p.Status != shared.KYCStatusApproved {
+		return false
+	}
+	if p.Tier == shared.KYCTierInstitutional {
+		return false // Already at max tier
+	}
+	// Can upgrade if current tier is lower than target
+	return p.Tier < targetTier
+}
+
 type KYCDocument struct {
 	ID              shared.UUID     `json:"id" db:"id"`
 	KYCProfileID    shared.UUID     `json:"kyc_profile_id" db:"kyc_profile_id"`
@@ -101,6 +132,14 @@ const (
 	DocumentStatusRejected  DocumentStatus = "REJECTED"
 	DocumentStatusExpired   DocumentStatus = "EXPIRED"
 )
+
+func (d DocumentType) String() string {
+	return string(d)
+}
+
+func (d DocumentStatus) String() string {
+	return string(d)
+}
 
 // KYCApplication represents a KYC verification request
 type KYCApplication struct {
@@ -167,6 +206,10 @@ const (
 	ScreenTypeTransaction       ScreenType = "TRANSACTION"
 )
 
+func (s ScreenType) String() string {
+	return string(s)
+}
+
 // AMLRule represents an anti-money laundering rule
 type AMLRule struct {
 	ID              shared.UUID     `json:"id" db:"id"`
@@ -206,6 +249,10 @@ const (
 	AMLRuleTypeUnusualPattern   AMLRuleType = "UNUSUAL_PATTERN"    // ML-based anomaly
 )
 
+func (a AMLRuleType) String() string {
+	return string(a)
+}
+
 type AMLAction string
 
 const (
@@ -214,6 +261,10 @@ const (
 	AMLActionBlock   AMLAction = "BLOCK"    // Block transaction
 	AMLActionFreeze  AMLAction = "FREEZE"   // Freeze account
 )
+
+func (a AMLAction) String() string {
+	return string(a)
+}
 
 // AMLAlert represents a triggered AML rule
 type AMLAlert struct {
@@ -240,9 +291,13 @@ type AMLAlert struct {
 type AMLAlertStatus string
 
 const (
-	AMLAlertStatusOpen       AMLAlertStatus = "OPEN"
-	AMLAlertStatusInvestigating AMLAlertStatus = "INVESTIGATING"
-	AMLAlertStatusResolved   AMLAlertStatus = "RESOLVED"
-	AMLAlertStatusDismissed  AMLAlertStatus = "DISMISSED"
-	AMLAlertStatusEscalated  AMLAlertStatus = "ESCALATED"
+	AMLAlertStatusOpen            AMLAlertStatus = "OPEN"
+	AMLAlertStatusInvestigating   AMLAlertStatus = "INVESTIGATING"
+	AMLAlertStatusResolved        AMLAlertStatus = "RESOLVED"
+	AMLAlertStatusDismissed       AMLAlertStatus = "DISMISSED"
+	AMLAlertStatusEscalated       AMLAlertStatus = "ESCALATED"
 )
+
+func (a AMLAlertStatus) String() string {
+	return string(a)
+}

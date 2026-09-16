@@ -56,6 +56,10 @@ const (
 	CustodyProviderFiat      CustodyProviderType = "FIAT"       // Bank integration
 )
 
+func (c CustodyProviderType) String() string {
+	return string(c)
+}
+
 // DepositAddress represents a user's deposit address
 type DepositAddress struct {
 	ID              shared.UUID     `json:"id"`
@@ -111,6 +115,10 @@ const (
 	DepositStatusFailed      DepositStatusType = "FAILED"        // Failed (reorg, double spend)
 )
 
+func (d DepositStatusType) String() string {
+	return string(d)
+}
+
 // WithdrawalRequest represents a withdrawal request
 type WithdrawalRequest struct {
 	ID              shared.UUID       `json:"id"`
@@ -145,6 +153,10 @@ const (
 	FeeLevelCustom FeeLevel = "CUSTOM"
 )
 
+func (f FeeLevel) String() string {
+	return string(f)
+}
+
 // WithdrawalResult represents the result of a withdrawal creation
 type WithdrawalResult struct {
 	WithdrawalID    shared.UUID     `json:"withdrawal_id"`
@@ -167,6 +179,10 @@ const (
 	WithdrawalStatusCancelled  WithdrawalStatusType = "CANCELLED"    // Cancelled
 	WithdrawalStatusRejected   WithdrawalStatusType = "REJECTED"     // Rejected by compliance
 )
+
+func (w WithdrawalStatusType) String() string {
+	return string(w)
+}
 
 // WithdrawalStatus represents withdrawal status
 type WithdrawalStatus struct {
@@ -301,6 +317,10 @@ const (
 	SettlementTypeLiquidation SettlementType = "LIQUIDATION"
 )
 
+func (s SettlementType) String() string {
+	return string(s)
+}
+
 type SettlementStatus string
 
 const (
@@ -310,6 +330,10 @@ const (
 	SettlementStatusFailed    SettlementStatus = "FAILED"
 	SettlementStatusCancelled SettlementStatus = "CANCELLED"
 )
+
+func (s SettlementStatus) String() string {
+	return string(s)
+}
 
 // ChainConfig holds chain-specific configuration
 type ChainConfig struct {

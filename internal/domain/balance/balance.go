@@ -196,16 +196,20 @@ type BalanceChangeEvent struct {
 type BalanceChangeType string
 
 const (
-	BalanceChangeLock        BalanceChangeType = "LOCK"           // Order placed
-	BalanceChangeUnlock      BalanceChangeType = "UNLOCK"         // Order cancelled
-	BalanceChangeTradeCredit BalanceChangeType = "TRADE_CREDIT"   // Trade fill credit
-	BalanceChangeTradeDebit  BalanceChangeType = "TRADE_DEBIT"    // Trade fill debit
-	BalanceChangeFee         BalanceChangeType = "FEE"            // Fee charged
-	BalanceChangeDeposit     BalanceChangeType = "DEPOSIT"        // Deposit confirmed
+	BalanceChangeLock        BalanceChangeType = "LOCK"            // Order placed
+	BalanceChangeUnlock      BalanceChangeType = "UNLOCK"          // Order cancelled
+	BalanceChangeTradeCredit BalanceChangeType = "TRADE_CREDIT"    // Trade fill credit
+	BalanceChangeTradeDebit  BalanceChangeType = "TRADE_DEBIT"     // Trade fill debit
+	BalanceChangeFee         BalanceChangeType = "FEE"             // Fee charged
+	BalanceChangeDeposit     BalanceChangeType = "DEPOSIT"         // Deposit confirmed
 	BalanceChangePendingDep  BalanceChangeType = "PENDING_DEPOSIT" // Deposit detected
-	BalanceChangeWithdrawal  BalanceChangeType = "WITHDRAWAL"     // Withdrawal processed
-	BalanceChangeSettlement  BalanceChangeType = "SETTLEMENT"     // On-chain settlement
+	BalanceChangeWithdrawal  BalanceChangeType = "WITHDRAWAL"      // Withdrawal processed
+	BalanceChangeSettlement  BalanceChangeType = "SETTLEMENT"      // On-chain settlement
 )
+
+func (b BalanceChangeType) String() string {
+	return string(b)
+}
 
 var (
 	ErrInsufficientBalance   = errors.New("insufficient available balance")

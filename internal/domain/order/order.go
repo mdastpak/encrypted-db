@@ -126,6 +126,10 @@ const (
 	OrderEventModified      OrderEventType = "ORDER_MODIFIED"
 )
 
+func (o OrderEventType) String() string {
+	return string(o)
+}
+
 // OrderBookSnapshot represents a point-in-time order book state
 type OrderBookSnapshot struct {
 	MarketID    shared.UUID        `json:"market_id"`

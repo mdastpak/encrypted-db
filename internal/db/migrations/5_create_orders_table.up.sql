@@ -10,7 +10,7 @@ CREATE TABLE orders (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     client_order_id     VARCHAR(64),
     
-    user_id             UUID NOT NULL REFERENCES users(id),
+    user_id             UUID NOT NULL REFERENCES users(hk),
     sub_account_id      UUID REFERENCES sub_accounts(id),
     market_id           UUID NOT NULL REFERENCES markets(id),
     

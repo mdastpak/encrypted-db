@@ -58,6 +58,10 @@ const (
 	UserStatusPending    UserStatus = "PENDING_VERIFICATION"
 )
 
+func (u UserStatus) String() string {
+	return string(u)
+}
+
 func (u *User) IsActive() bool {
 	return u.Status == UserStatusActive
 }
@@ -101,6 +105,10 @@ const (
 	SubAccountStatusFrozen   SubAccountStatus = "FROZEN"
 )
 
+func (s SubAccountStatus) String() string {
+	return string(s)
+}
+
 func (s *SubAccount) IsActive() bool {
 	return s.Status == SubAccountStatusActive
 }
@@ -138,6 +146,10 @@ const (
 	// Admin
 	PermissionAdmin          Permission = "ADMIN"
 )
+
+func (p Permission) String() string {
+	return string(p)
+}
 
 // APIKey represents an API key for programmatic access
 type APIKey struct {
@@ -181,6 +193,10 @@ const (
 	APIKeyTypeEd25519  APIKeyType = "ED25519"   // Ed25519 signing
 )
 
+func (a APIKeyType) String() string {
+	return string(a)
+}
+
 type APIKeyStatus string
 
 const (
@@ -189,6 +205,10 @@ const (
 	APIKeyStatusRevoked  APIKeyStatus = "REVOKED"
 	APIKeyStatusExpired  APIKeyStatus = "EXPIRED"
 )
+
+func (a APIKeyStatus) String() string {
+	return string(a)
+}
 
 // GenerateAPIKey creates a new API key pair
 func GenerateAPIKey(keyType APIKeyType) (publicKey, secret string, err error) {
@@ -268,6 +288,10 @@ const (
 	AuthMethodWebAuthn    AuthMethod = "WEBAUTHN"
 )
 
+func (a AuthMethod) String() string {
+	return string(a)
+}
+
 type SessionStatus string
 
 const (
@@ -275,6 +299,10 @@ const (
 	SessionStatusRevoked  SessionStatus = "REVOKED"
 	SessionStatusExpired  SessionStatus = "EXPIRED"
 )
+
+func (s SessionStatus) String() string {
+	return string(s)
+}
 
 // GenerateReferralCode creates a unique referral code
 func GenerateReferralCode() string {

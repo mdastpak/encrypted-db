@@ -57,6 +57,10 @@ const (
 	MarketStatusDelisted    MarketStatus = "DELISTED"
 )
 
+func (m MarketStatus) String() string {
+	return string(m)
+}
+
 // MarketStats holds 24h rolling statistics
 type MarketStats struct {
 	MarketID        shared.UUID    `json:"market_id"`

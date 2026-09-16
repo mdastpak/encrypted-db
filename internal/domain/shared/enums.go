@@ -26,6 +26,11 @@ func (u UUID) String() string {
 	return uuid.UUID(u).String()
 }
 
+// IsZero returns true if UUID is zero value
+func (u UUID) IsZero() bool {
+	return uuid.UUID(u) == uuid.UUID{}
+}
+
 func (u UUID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(u.String())
 }
@@ -71,6 +76,14 @@ type Decimal decimal.Decimal
 func NewDecimalFromString(s string) (Decimal, error) {
 	d, err := decimal.NewFromString(s)
 	return Decimal(d), err
+}
+
+func MustNewDecimalFromString(s string) Decimal {
+	d, err := NewDecimalFromString(s)
+	if err != nil {
+		panic(err)
+	}
+	return d
 }
 
 func NewDecimalFromInt64(v int64) Decimal {
@@ -286,15 +299,23 @@ const (
 	AssetTypeWrapped   AssetType = "WRAPPED"   // Wrapped asset (WBTC, WETH)
 )
 
+func (a AssetType) String() string {
+	return string(a)
+}
+
 // AssetStatus represents the operational status of an asset
 type AssetStatus string
 
 const (
-	AssetStatusActive    AssetStatus = "ACTIVE"
-	AssetStatusInactive  AssetStatus = "INACTIVE"
+	AssetStatusActive     AssetStatus = "ACTIVE"
+	AssetStatusInactive   AssetStatus = "INACTIVE"
 	AssetStatusDeprecated AssetStatus = "DEPRECATED"
-	AssetStatusDelisted  AssetStatus = "DELISTED"
+	AssetStatusDelisted   AssetStatus = "DELISTED"
 )
+
+func (a AssetStatus) String() string {
+	return string(a)
+}
 
 // OrderSide represents buy or sell
 type OrderSide string
@@ -303,6 +324,10 @@ const (
 	OrderSideBuy  OrderSide = "BUY"
 	OrderSideSell OrderSide = "SELL"
 )
+
+func (s OrderSide) String() string {
+	return string(s)
+}
 
 func (s OrderSide) Opposite() OrderSide {
 	if s == OrderSideBuy {
@@ -315,23 +340,31 @@ func (s OrderSide) Opposite() OrderSide {
 type OrderType string
 
 const (
-	OrderTypeMarket OrderType = "MARKET"
-	OrderTypeLimit  OrderType = "LIMIT"
-	OrderTypeStop   OrderType = "STOP"
+	OrderTypeMarket  OrderType = "MARKET"
+	OrderTypeLimit   OrderType = "LIMIT"
+	OrderTypeStop    OrderType = "STOP"
 	OrderTypeStopLimit OrderType = "STOP_LIMIT"
 )
+
+func (o OrderType) String() string {
+	return string(o)
+}
 
 // OrderStatus represents the order lifecycle status
 type OrderStatus string
 
 const (
-	OrderStatusNew           OrderStatus = "NEW"
+	OrderStatusNew             OrderStatus = "NEW"
 	OrderStatusPartiallyFilled OrderStatus = "PARTIALLY_FILLED"
-	OrderStatusFilled        OrderStatus = "FILLED"
-	OrderStatusCancelled     OrderStatus = "CANCELLED"
-	OrderStatusRejected      OrderStatus = "REJECTED"
-	OrderStatusExpired       OrderStatus = "EXPIRED"
+	OrderStatusFilled          OrderStatus = "FILLED"
+	OrderStatusCancelled       OrderStatus = "CANCELLED"
+	OrderStatusRejected        OrderStatus = "REJECTED"
+	OrderStatusExpired         OrderStatus = "EXPIRED"
 )
+
+func (o OrderStatus) String() string {
+	return string(o)
+}
 
 // TimeInForce represents order time in force
 type TimeInForce string
@@ -343,6 +376,10 @@ const (
 	TimeInForceGTX TimeInForce = "GTX" // Good Till Crossing (Post-Only)
 )
 
+func (t TimeInForce) String() string {
+	return string(t)
+}
+
 // TradeSide represents the aggressive side of a trade
 type TradeSide string
 
@@ -351,13 +388,23 @@ const (
 	TradeSideSell TradeSide = "SELL"
 )
 
+func (t TradeSide) String() string {
+	return string(t)
+}
+
 // SettlementMode represents how trades settle
 type SettlementMode string
 
 const (
 	SettlementModeOffChain SettlementMode = "OFF_CHAIN"
 	SettlementModeOnChain  SettlementMode = "ON_CHAIN"
+	SettlementModeLayer2   SettlementMode = "LAYER2"
+	SettlementModeBatch    SettlementMode = "BATCH"
 )
+
+func (s SettlementMode) String() string {
+	return string(s)
+}
 
 // KYCStatus represents KYC verification status
 type KYCStatus string
