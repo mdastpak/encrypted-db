@@ -20,5 +20,6 @@ ADD CONSTRAINT user_info_structure CHECK (
 );
 
 -- Create a unique index for the `username` field in `info`
-CREATE UNIQUE INDEX user_info_username_unique ON currencies ((info->>'username'));
+CREATE UNIQUE INDEX user_info_username_unique ON users ((info->>'username'));
+
 

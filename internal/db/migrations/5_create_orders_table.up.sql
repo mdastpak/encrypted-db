@@ -11,7 +11,7 @@ CREATE TABLE orders (
     client_order_id     VARCHAR(64),
     
     user_id             UUID NOT NULL REFERENCES users(hk),
-    sub_account_id      UUID REFERENCES sub_accounts(id),
+    sub_account_id      UUID,
     market_id           UUID NOT NULL REFERENCES markets(id),
     
     side                order_side NOT NULL,
@@ -64,7 +64,7 @@ CREATE TABLE order_events (
     old_filled          NUMERIC(36, 18),
     new_filled          NUMERIC(36, 18),
     
-    trade_id            UUID REFERENCES trades(id),
+    trade_id            UUID,
     trade_price         NUMERIC(36, 18),
     trade_qty           NUMERIC(36, 18),
     trade_fee           NUMERIC(36, 18),

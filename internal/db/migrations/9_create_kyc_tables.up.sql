@@ -7,11 +7,12 @@ CREATE TYPE screen_type AS ENUM ('USER_ONBOARDING', 'DEPOSIT_ADDRESS', 'WITHDRAW
 CREATE TYPE aml_rule_type AS ENUM ('VELOCITY', 'STRUCTURING', 'HIGH_RISK_COUNTRY', 'MIXER', 'DARKNET', 'SANCTIONS', 'PEP', 'UNUSUAL_PATTERN');
 CREATE TYPE aml_action AS ENUM ('ALERT', 'REVIEW', 'BLOCK', 'FREEZE');
 CREATE TYPE aml_alert_status AS ENUM ('OPEN', 'INVESTIGATING', 'RESOLVED', 'DISMISSED', 'ESCALATED');
+CREATE TYPE sanction_action AS ENUM ('ALLOW', 'REVIEW', 'BLOCK');
 
 -- KYC Profiles
 CREATE TABLE kyc_profiles (
     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                         UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id                         UUID NOT NULL UNIQUE REFERENCES users(hk) ON DELETE CASCADE,
     
     status                          kyc_status NOT NULL DEFAULT 'PENDING',
     tier                            kyc_tier NOT NULL DEFAULT 'NONE',
@@ -31,7 +32,7 @@ CREATE TABLE kyc_profiles (
     country_enc                     VARCHAR(100),
     
     verified_at                     TIMESTAMPTZ,
-    verified_by                     UUID REFERENCES users(id),
+    verified_by                     UUID REFERENCES users(hk),
     expires_at                      TIMESTAMPTZ,
     
     risk_score                      SMALLINT NOT NULL DEFAULT 0,
@@ -68,7 +69,7 @@ CREATE TABLE kyc_documents (
     storage_path                    VARCHAR(500) NOT NULL,
     
     verified_at                     TIMESTAMPTZ,
-    verified_by                     UUID REFERENCES users(id),
+    verified_by                     UUID REFERENCES users(hk),
     reject_reason                   TEXT,
     
     extracted_data_enc              TEXT,
@@ -86,7 +87,7 @@ CREATE TRIGGER update_kyc_documents_updated_at BEFORE UPDATE ON kyc_documents
 -- KYC Applications
 CREATE TABLE kyc_applications (
     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id                         UUID NOT NULL REFERENCES users(hk) ON DELETE CASCADE,
     requested_tier                  kyc_tier NOT NULL,
     
     status                          kyc_status NOT NULL DEFAULT 'PENDING',
@@ -96,7 +97,7 @@ CREATE TABLE kyc_applications (
     documents                       UUID[] DEFAULT '{}',
     
     reviewed_at                     TIMESTAMPTZ,
-    reviewed_by                     UUID REFERENCES users(id),
+    reviewed_by                     UUID REFERENCES users(hk),
     review_notes                    TEXT,
     
     provider                        VARCHAR(50),
@@ -115,7 +116,7 @@ CREATE TRIGGER update_kyc_applications_updated_at BEFORE UPDATE ON kyc_applicati
 -- Sanctions Screenings
 CREATE TABLE sanctions_screenings (
     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                         UUID REFERENCES users(id) ON DELETE SET NULL,
+    user_id                         UUID REFERENCES users(hk) ON DELETE SET NULL,
     address_id                      UUID,
     counterparty_id                 UUID,
     
@@ -129,7 +130,7 @@ CREATE TABLE sanctions_screenings (
     matched_entries                 TEXT[] DEFAULT '{}',
     
     decided_at                      TIMESTAMPTZ,
-    decided_by                      UUID REFERENCES users(id),
+    decided_by                      UUID REFERENCES users(hk),
     notes                           TEXT,
     
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -172,16 +173,16 @@ CREATE TRIGGER update_aml_rules_updated_at BEFORE UPDATE ON aml_rules
 CREATE TABLE aml_alerts (
     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     rule_id                         UUID NOT NULL REFERENCES aml_rules(id),
-    user_id                         UUID NOT NULL REFERENCES users(id),
+    user_id                         UUID NOT NULL REFERENCES users(hk),
     sub_account_id                  UUID REFERENCES sub_accounts(id),
     
     trigger_data                    JSONB NOT NULL,
     risk_score                      NUMERIC(5, 2) NOT NULL DEFAULT 0,
     
     status                          aml_alert_status NOT NULL DEFAULT 'OPEN',
-    assigned_to                     UUID REFERENCES users(id),
+    assigned_to                     UUID REFERENCES users(hk),
     resolved_at                     TIMESTAMPTZ,
-    resolved_by                     UUID REFERENCES users(id),
+    resolved_by                     UUID REFERENCES users(hk),
     resolution                      TEXT,
     
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -196,5 +197,4 @@ CREATE INDEX idx_aml_alerts_created ON aml_alerts(created_at);
 CREATE TRIGGER update_aml_alerts_updated_at BEFORE UPDATE ON aml_alerts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Sanction action enum (already created in assets migration)
--- CREATE TYPE sanction_action AS ENUM ('ALLOW', 'REVIEW', 'BLOCK');
+-- Sanction action enum (created above)

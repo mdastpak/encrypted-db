@@ -32,12 +32,12 @@ import (
 )
 
 type InfraHandlers struct {
-	Socket        *socket.WebSocketHandler
-	System        *system.SystemHandler
-	Admin         *admin.AdminHandler
-	Public        *public.PublicHandler
-	User          *user.UserHandler
-	Redis         *db.RedisService
+	Socket         *socket.WebSocketHandler
+	System         *system.SystemHandler
+	Admin          *admin.AdminHandler
+	Public         *public.PublicHandler
+	User           *user.UserHandler
+	Redis          *db.RedisService
 	TokenBlacklist *auth.TokenBlacklist
 }
 
@@ -265,7 +265,7 @@ func RouteHandler(r *gin.Engine, ih *InfraHandlers) {
 	userGroup.Use(rl.TradingRateLimit())
 	{
 		userGroup.GET("/profile", ih.User.GetActiveCurrencies)
-		userGroup.POST("/update", nil)
+		userGroup.POST("/update", ih.User.UpdateProfile)
 		userGroup.POST("/logout", func(c *gin.Context) {
 			auth.LogoutHandler(c, ih.TokenBlacklist)
 		})

@@ -60,6 +60,22 @@ func (h *SystemHandler) HealthCheckHandler(c *gin.Context) {
 		}
 	}
 
+	start = time.Now()
+	if h.RabbitMQService == nil || !h.RabbitMQService.IsHealthy() {
+		healthStatus.Status = "degraded"
+		healthStatus.Details["rabbitmq"] = ServiceStatus{
+			Status:    "error",
+			LastCheck: time.Now(),
+			LatencyMs: time.Since(start).Milliseconds(),
+		}
+	} else {
+		healthStatus.Details["rabbitmq"] = ServiceStatus{
+			Status:    "ok",
+			LastCheck: time.Now(),
+			LatencyMs: time.Since(start).Milliseconds(),
+		}
+	}
+
 	c.JSON(http.StatusOK, healthStatus)
 }
 

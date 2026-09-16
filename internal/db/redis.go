@@ -30,10 +30,8 @@ func NewRedisService() (*RedisService, error) {
 
 	client := redis.NewClient(opts)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
+	if err := redisPingWithRetry(client, config.Config.Redis.ConnectRetries, time.Duration(config.Config.Redis.ConnectRetryDelayMs)*time.Millisecond); err != nil {
+		client.Close()
 		return nil, fmt.Errorf("error connecting to Redis: %w", err)
 	}
 
@@ -66,4 +64,32 @@ func (r *RedisService) Stats() *redis.PoolStats {
 		return nil
 	}
 	return r.Client.PoolStats()
+}
+
+// redisPingWithRetry pings Redis up to maxAttempts times with an exponential
+// backoff between attempts, so transient startup ordering issues do not fail
+// the service. A maxAttempts value <= 1 performs a single attempt with no retry.
+func redisPingWithRetry(client *redis.Client, maxAttempts int, delay time.Duration) error {
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	if delay <= 0 {
+		delay = 500 * time.Millisecond
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		lastErr = client.Ping(ctx).Err()
+		cancel()
+		if lastErr == nil {
+			return nil
+		}
+		if attempt < maxAttempts {
+			log.Printf("Redis ping attempt %d/%d failed: %v, retrying in %v", attempt, maxAttempts, lastErr, delay)
+			time.Sleep(delay)
+			delay *= 2
+		}
+	}
+	return lastErr
 }

@@ -11,7 +11,7 @@ CREATE TYPE settlement_status AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FA
 -- Deposit Addresses
 CREATE TABLE deposit_addresses (
     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id                         UUID NOT NULL REFERENCES users(hk) ON DELETE CASCADE,
     sub_account_id                  UUID REFERENCES sub_accounts(id) ON DELETE CASCADE,
     asset_id                        UUID NOT NULL REFERENCES assets(id),
     
@@ -69,7 +69,7 @@ CREATE INDEX idx_deposits_detected_at ON deposits(detected_at);
 -- Withdrawals
 CREATE TABLE withdrawals (
     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id                         UUID NOT NULL REFERENCES users(hk) ON DELETE CASCADE,
     sub_account_id                  UUID REFERENCES sub_accounts(id) ON DELETE CASCADE,
     asset_id                        UUID NOT NULL REFERENCES assets(id),
     
@@ -118,8 +118,8 @@ CREATE TABLE settlements (
     id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     type                            settlement_type NOT NULL,
     
-    from_user_id                    UUID NOT NULL REFERENCES users(id),
-    to_user_id                      UUID NOT NULL REFERENCES users(id),
+    from_user_id                    UUID NOT NULL REFERENCES users(hk),
+    to_user_id                      UUID NOT NULL REFERENCES users(hk),
     from_sub_account_id             UUID REFERENCES sub_accounts(id),
     to_sub_account_id               UUID REFERENCES sub_accounts(id),
     

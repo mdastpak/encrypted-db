@@ -35,6 +35,11 @@ CREATE INDEX idx_trades_taker_order ON trades(taker_order_id);
 CREATE INDEX idx_trades_timestamp ON trades(timestamp DESC);
 CREATE INDEX idx_trades_market_time ON trades(market_id, timestamp DESC);
 
+-- order_events.trade_id was created (without a FK) in migration 5, before
+-- this table existed; add the deferred foreign key now that trades exists.
+ALTER TABLE order_events ADD CONSTRAINT fk_order_events_trade_id
+    FOREIGN KEY (trade_id) REFERENCES trades(id);
+
 -- TimescaleDB hypertable for trades (high volume)
 -- SELECT create_hypertable('trades', 'timestamp', chunk_time_interval => INTERVAL '1 day');
 -- CREATE INDEX idx_trades_market_time_desc ON trades(market_id, timestamp DESC);
@@ -53,8 +58,8 @@ CREATE TABLE trade_events (
     
     maker_order_id      UUID NOT NULL REFERENCES orders(id),
     taker_order_id      UUID NOT NULL REFERENCES orders(id),
-    maker_user_id       UUID NOT NULL REFERENCES users(id),
-    taker_user_id       UUID NOT NULL REFERENCES users(id),
+    maker_user_id       UUID NOT NULL REFERENCES users(hk),
+    taker_user_id       UUID NOT NULL REFERENCES users(hk),
     
     maker_fee           NUMERIC(36, 18),
     taker_fee           NUMERIC(36, 18),
