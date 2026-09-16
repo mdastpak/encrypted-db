@@ -82,7 +82,8 @@ func (h *WebSocketHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.registerClient(client)
-	defer h.unregisterClient(client)
+	// Note: readPump's own defer unregisters the client on exit; unregistering
+	// again here would double-close client.Send and panic.
 
 	h.Wg.Add(1)
 	go h.writePump(client)
@@ -113,10 +114,12 @@ func (h *WebSocketHandler) clientCount() int {
 }
 
 func (h *WebSocketHandler) readPump(client *Client) {
-	defer func() {
-		h.unregisterClient(client)
-		h.Wg.Done()
-	}()
+	// Note: only writePump is tracked via h.Wg (matching the single
+	// h.Wg.Add(1) call in ServeWS before it is started); readPump runs
+	// synchronously on the caller's goroutine and must not call h.Wg.Done()
+	// itself, or the WaitGroup counter goes negative and panics on every
+	// normal client disconnect.
+	defer h.unregisterClient(client)
 
 	client.Conn.SetReadLimit(512)
 	client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
